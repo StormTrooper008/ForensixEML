@@ -1,7 +1,7 @@
 import streamlit as st
 import folium
 from streamlit_folium import st_folium
-from logic.export import generate_case_pdf  # <-- 1. Add this import
+from logic.export import generate_case_pdf
 
 def render_workbench():
     st.markdown("<h2>Active Evidence Workbench</h2>", unsafe_allow_html=True)
@@ -11,10 +11,23 @@ def render_workbench():
         st.info("No active cases in session. Please upload a file via the Upload & Ingest page.")
         return
 
-    selected_case = st.selectbox("Select Active Case:", list(st.session_state.analyzed_store.keys()))
-    data = st.session_state.analyzed_store[selected_case]
+    # --- UPDATED SELECTION LOGIC FOR REDIRECT ---
+    case_keys = list(st.session_state.analyzed_store.keys())
     
-    # --- 2. ADD THE PDF DOWNLOAD BUTTON BLOCK HERE ---
+    default_idx = 0
+    if st.session_state.get("selected_case") in case_keys:
+        default_idx = case_keys.index(st.session_state.selected_case)
+
+    selected_case = st.selectbox(
+        "Select Active Case:", 
+        case_keys, 
+        index=default_idx
+    )
+    st.session_state.selected_case = selected_case
+    data = st.session_state.analyzed_store[selected_case]
+    # ---------------------------------------------
+    
+    # --- PDF DOWNLOAD BUTTON BLOCK ---
     col1, col2 = st.columns([3, 1])
     with col1:
         st.write(f"**Investigating:** `{data['file_name']}` | **SHA256:** `{data['hash']}`")
@@ -31,7 +44,6 @@ def render_workbench():
 
     t1, t2, t3, t4 = st.tabs(["Headers & Body", "Authentication", "Geo Map", "Heuristics"])
 
-        
     with t1:
         st.json(data["decomp"]["headers"])
         st.text_area("Plain Text Body Extract", data["decomp"]["body_preview"], height=200, disabled=True)

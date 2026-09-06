@@ -1,0 +1,155 @@
+Delivered-To: arnavllal@gmail.com
+Received: by 2002:a17:504:8647:b0:1cb0:379f:2bea with SMTP id p7csp5972022njm;
+        Mon, 28 Apr 2025 12:14:07 -0700 (PDT)
+X-Google-Smtp-Source: AGHT+IH3Crr7BUCA+jGnBN9Z6uUkAxehINaIL0S2A0qDamBK+Y8JE6GPEd9qT4YW6/k7Oe3M3zq3
+X-Received: by 2002:a05:622a:5c0a:b0:477:e70:6664 with SMTP id d75a77b69052e-48815d45074mr15216271cf.36.1745867646960;
+        Mon, 28 Apr 2025 12:14:06 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1745867646; cv=none;
+        d=google.com; s=arc-20240605;
+        b=SSixtb5ilmhkt9ke2MDRXF9M1/D+1B4ytfdOdrXq5GTdJZeQyNfn97DNku6U1Tuj7t
+         fB2j/Af/5fFM02u1cd/uyAtKeSBlulEnunKhZm83elpYmNpLiC53bU5M6Oo+K8ICR+0q
+         PR9/nNc+rtrAdrZN8T9oNFg9U7J0woAXCmuhz5y3BxCu4iDR7fbIk0bpaRamxlo/Uien
+         J6FWyza0CoeArFe89UW4I2ZXtE9JhkEUMjVQBs5D4RVQ1IunXP05o4edwBKDEI1f31uz
+         fkg95UX5r3vScsugs32FT2R9Y3KE8WHh4KSwwbtAfXtaZMA/h0nd8DZ0Efws/vNOJ7O3
+         oGKQ==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=destinations:list-unsubscribe-post:list-unsubscribe:list-post
+         :list-archive:list-id:precedence:content-transfer-encoding
+         :mime-version:subject:references:in-reply-to:message-id:cc:to
+         :reply-to:from:date:dkim-signature;
+        bh=pHG2kHo94lRbO+xAWmGXmXXiQzCIS2bDI4jtp8hEf8c=;
+        fh=1zmTV6x7YHt5cf+gVKvepX/EL4ldKXOn7RPPn5DdQEg=;
+        b=hRE/Az8BokPQrvzURBOYt+FtlBq1x4LW3oJiGQIRArdqb6YWkDpfzAwXsXpL11dATs
+         TrWwHlK/Zknc3jUGSGOmeKS5nRjUiMdwHvl+XujCU5qohNMuwkBdLjXH8V2vlvPwHQIB
+         v9azt5wv1RAuEWO/cXQTca923icyndWP/Bdx1vaYaxCiEuqP75CGdO7lF5vIv04jd9fD
+         LmZwtIbUI7SxmeWjtZRV0zLxfMUAVuN6Wxvl+RW1tp7+fFCtNchbCl/BK6GqMDOHc/GZ
+         L0qfxepQBXRFXkfjSk3jCVtQ/GmDbl6gP6PhxXRVkdhHpMwWaVTqG3iee703ffwJsbSZ
+         v3+w==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@github.com header.s=pf2023 header.b=cbso2wZP;
+       spf=pass (google.com: domain of noreply@github.com designates 192.30.252.204 as permitted sender) smtp.mailfrom=noreply@github.com;
+       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=github.com
+Return-Path: <noreply@github.com>
+Received: from out-21.smtp.github.com (out-21.smtp.github.com. [192.30.252.204])
+        by mx.google.com with ESMTPS id d75a77b69052e-47ea1f95dd8si107072651cf.376.2025.04.28.12.14.06
+        for <arnavllal@gmail.com>
+        (version=TLS1_3 cipher=TLS_AES_256_GCM_SHA384 bits=256/256);
+        Mon, 28 Apr 2025 12:14:06 -0700 (PDT)
+Received-SPF: pass (google.com: domain of noreply@github.com designates 192.30.252.204 as permitted sender) client-ip=192.30.252.204;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@github.com header.s=pf2023 header.b=cbso2wZP;
+       spf=pass (google.com: domain of noreply@github.com designates 192.30.252.204 as permitted sender) smtp.mailfrom=noreply@github.com;
+       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=github.com
+Received: from github.com (hubbernetes-node-38032fe.ac4-iad.github.net [10.52.151.31])
+	by smtp.github.com (Postfix) with ESMTPA id A23A1700C36
+	for <arnavllal@gmail.com>; Mon, 28 Apr 2025 12:14:06 -0700 (PDT)
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=github.com;
+	s=pf2023; t=1745867646;
+	bh=pHG2kHo94lRbO+xAWmGXmXXiQzCIS2bDI4jtp8hEf8c=;
+	h=Date:From:Reply-To:To:Cc:In-Reply-To:References:Subject:List-ID:
+	 List-Archive:List-Post:List-Unsubscribe:List-Unsubscribe-Post:
+	 From;
+	b=cbso2wZPOx1KtvHXaakzOk3Fj5UT/UabsOFdxOWjjLO7ocDpu/ibGDQMhIGyZ7n4c
+	 /NnkWoxOCQNVE8rg1U8I/vNnHfZKVSIZ1Ji79GfuDS3OlqAHCjsKVU85Mcs4PeJo7f
+	 HI2/xmh7JjW4+dC2+k/Oj4p4JL2jztHWtuWkiy+I=
+Date: Mon, 28 Apr 2025 12:14:06 -0700
+From: H644b <notifications@github.com>
+Reply-To: elboletaire/manga-downloader <reply+AVZA6SDMYEIB3L2P45PMVDGGDPBI5EVBNHHJSB2EMY@reply.github.com>
+To: elboletaire/manga-downloader <manga-downloader@noreply.github.com>
+Cc: MarvelKid <arnavllal@gmail.com>, 
+ Author <author@noreply.github.com>
+Message-ID: <elboletaire/manga-downloader/issues/49/2836250632@github.com>
+In-Reply-To: <elboletaire/manga-downloader/issues/49@github.com>
+References: <elboletaire/manga-downloader/issues/49@github.com>
+Subject: Re: [elboletaire/manga-downloader] Please add support for mangafire
+ (Issue #49)
+Mime-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="--==_mimepart_680fd37e9ef39_c510289403";
+ charset=UTF-8
+Content-Transfer-Encoding: 7bit
+Precedence: list
+X-GitHub-Sender: H644b
+X-GitHub-Recipient: MarvelKid
+X-GitHub-Reason: author
+List-ID: elboletaire/manga-downloader
+ <manga-downloader.elboletaire.github.com>
+List-Archive: https://github.com/elboletaire/manga-downloader
+List-Post: <mailto:reply+AVZA6SDMYEIB3L2P45PMVDGGDPBI5EVBNHHJSB2EMY@reply.github.com>
+List-Unsubscribe: <mailto:unsub+AVZA6SDMYEIB3L2P45PMVDGGDPBI5EVBNHHJSB2EMY@reply.github.com>,
+ <https://github.com/notifications/unsubscribe/one-click/AVZA6SCEX54C45LSPTA47IL23Z4X5ANCNFSM6AAAAABPMTKD7A>
+List-Unsubscribe-Post: List-Unsubscribe=One-Click
+X-Auto-Response-Suppress: All
+destinations: arnavllal@gmail.com
+X-GitHub-Recipient-Address: arnavllal@gmail.com
+
+
+----==_mimepart_680fd37e9ef39_c510289403
+Content-Type: text/plain;
+ charset=UTF-8
+Content-Transfer-Encoding: 7bit
+
+H644b left a comment (elboletaire/manga-downloader#49)
+
+Bump! Mangafire has a very large selection.
+
+-- 
+Reply to this email directly or view it on GitHub:
+https://github.com/elboletaire/manga-downloader/issues/49#issuecomment-2836250632
+You are receiving this because you authored the thread.
+
+Message ID: <elboletaire/manga-downloader/issues/49/2836250632@github.com>
+----==_mimepart_680fd37e9ef39_c510289403
+Content-Type: text/html;
+ charset=UTF-8
+Content-Transfer-Encoding: quoted-printable
+
+
+<div style=3D"display: flex; flex-wrap: wrap; white-space: pre-wrap; alig=
+n-items: center; "><img height=3D"20" width=3D"20" style=3D"border-radius=
+:50%; margin-right: 4px;" decoding=3D"async" src=3D"https://avatars.githu=
+busercontent.com/u/69388525?s=3D20&amp;v=3D4" /><strong>H644b</strong> le=
+ft a comment <a href=3D"https://github.com/elboletaire/manga-downloader/i=
+ssues/49#issuecomment-2836250632">(elboletaire/manga-downloader#49)</a></=
+div>
+<p dir=3D"auto">Bump! Mangafire has a very large selection.</p>
+
+<p style=3D"font-size:small;-webkit-text-size-adjust:none;color:#666;">&m=
+dash;<br />Reply to this email directly, <a href=3D"https://github.com/el=
+boletaire/manga-downloader/issues/49#issuecomment-2836250632">view it on =
+GitHub</a>, or <a href=3D"https://github.com/notifications/unsubscribe-au=
+th/AVZA6SG62KPBWMOPOP4JHOT23Z4X5AVCNFSM6AAAAABPMTKD7CVHI2DSMVQWIX3LMV43OS=
+LTON2WKQ3PNVWWK3TUHMZDQMZWGI2TANRTGI">unsubscribe</a>.<br />You are recei=
+ving this because you authored the thread.<img src=3D"https://github.com/=
+notifications/beacon/AVZA6SFOZEWITVTT3PVB2XL23Z4X5A5CNFSM6AAAAABPMTKD7CWG=
+G33NNVSW45C7OR4XAZNMJFZXG5LFINXW23LFNZ2KUY3PNVWWK3TUL5UWJTVJBXAAQ.gif" he=
+ight=3D"1" width=3D"1" alt=3D"" /><span style=3D"color: transparent; font=
+-size: 0; display: none; visibility: hidden; overflow: hidden; opacity: 0=
+; width: 0; height: 0; max-width: 0; max-height: 0; mso-hide: all">Messag=
+e ID: <span>&lt;elboletaire/manga-downloader/issues/49/2836250632</span><=
+span>@</span><span>github</span><span>.</span><span>com&gt;</span></span>=
+</p>
+
+<script type=3D"application/ld+json">[
+{
+"@context": "http://schema.org",
+"@type": "EmailMessage",
+"potentialAction": {
+"@type": "ViewAction",
+"target": "https://github.com/elboletaire/manga-downloader/issues/49#issu=
+ecomment-2836250632",
+"url": "https://github.com/elboletaire/manga-downloader/issues/49#issueco=
+mment-2836250632",
+"name": "View Issue"
+},
+"description": "View this Issue on GitHub",
+"publisher": {
+"@type": "Organization",
+"name": "GitHub",
+"url": "https://github.com"
+}
+}
+]</script>
+
+----==_mimepart_680fd37e9ef39_c510289403--
