@@ -1,0 +1,7 @@
+streamlit>=1.35.0
+geoip2>=4.8.0
+dnspython>=2.6.0
+folium>=0.16.0
+streamlit-folium>=0.20.0
+requests>=2.31.0
+fpdf2>=2.7.9
