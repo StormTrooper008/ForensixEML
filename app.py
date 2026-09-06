@@ -53,31 +53,31 @@ else:
         "⚙️ Settings & User"
     ]
 
-    # Callback to sync the radio button with our shadow variable
-    def sync_navigation():
-        st.session_state.current_page = st.session_state.nav_radio
-
     with st.sidebar:
         st.markdown("## 💾 **Email Forensics**")
         st.divider()
-        st.radio(
+        
+        # Calculate the current index based on session state
+        active_index = nav_options.index(st.session_state.current_page) if st.session_state.current_page in nav_options else 0
+        
+        # Draw the radio button WITHOUT a key, relying only on index
+        selected_page = st.radio(
             "Navigation Engine", 
             nav_options,
-            index=nav_options.index(st.session_state.current_page) if st.session_state.current_page in nav_options else 0,
-            key="nav_radio",
-            on_change=sync_navigation
+            index=active_index
         )
+        
+        # Keep session state updated if the user clicks a new option
+        st.session_state.current_page = selected_page
 
-    # Route according to the shadow variable
-    active_page = st.session_state.current_page
-    
-    if active_page == "🏠 Main Dashboard":
+    # Route according to the active page
+    if st.session_state.current_page == "🏠 Main Dashboard":
         render_dashboard()
-    elif active_page == "📂 Upload & Ingest":
+    elif st.session_state.current_page == "📂 Upload & Ingest":
         render_upload()
-    elif active_page == "🔬 Investigation Workbench":
+    elif st.session_state.current_page == "🔬 Investigation Workbench":
         render_workbench()
-    elif active_page == "🗄️ Database Ledger":
+    elif st.session_state.current_page == "🗄️ Database Ledger":
         render_ledger()
-    elif active_page == "⚙️ Settings & User":
+    elif st.session_state.current_page == "⚙️ Settings & User":
         render_settings()

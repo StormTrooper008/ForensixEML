@@ -138,10 +138,9 @@ def render_upload():
 
 # Handle Successful Upload & Automatic Redirect
         if success_cases:
-            # Point to the last processed case
             st.session_state.selected_case = success_cases[-1]
             
-            # Update the shadow variable instead of the widget key
+            # Update the central state variable
             st.session_state.current_page = "🔬 Investigation Workbench"
             
             # Instantly trigger the page reload
