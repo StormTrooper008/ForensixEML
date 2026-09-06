@@ -1,9 +1,10 @@
 # --- ui/upload.py ---
 import hashlib
-import email
-from email import policy
 import re
 import streamlit as st
+import json
+import email
+from email import policy
 
 from logic.parser import parse_step1_headers
 from logic.auth import run_protocol_checks
@@ -109,14 +110,27 @@ def render_upload():
                 status_label = "🔴 Malicious" if risk >= 75 else ("🟡 Suspicious" if risk >= 45 else "🟢 Safe")
 
 
-                # 5. Database Insertion (ONLY IF NOT EXISTING)
+                # 5. Database Insertion OR Update
+                # Package the full telemetry into a JSON string
+                telemetry_package = {
+                    "decomp": decomp, "auth": auth, "geo": geo, "heur": heur, "intel": intel
+                }
+                telemetry_str = json.dumps(telemetry_package)
+
                 if not existing:
                     cursor.execute("""
-                        INSERT INTO cases (case_id, file_name, sha256, sender, subject, origin_ip, risk_score, status)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (case_id, uf.name, f_hash, sender, subject, orig_ip, risk, status_label))
+                        INSERT INTO cases (case_id, file_name, sha256, sender, subject, origin_ip, risk_score, status, telemetry)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (case_id, uf.name, f_hash, sender, subject, orig_ip, risk, status_label, telemetry_str))
+                else:
+                    # OVERWRITE the existing database row with the new intelligence score
+                    cursor.execute("""
+                        UPDATE cases 
+                        SET risk_score = ?, status = ?, telemetry = ?, timestamp = CURRENT_TIMESTAMP
+                        WHERE case_id = ?
+                    """, (risk, status_label, telemetry_str, case_id))
                 
-                # 6. Save into session memory for active workbench (Updated to include intel)
+                # 6. Save into session memory for active workbench
                 st.session_state.analyzed_store[case_id] = {
                     "case_id": case_id,
                     "file_name": uf.name, 
@@ -127,7 +141,7 @@ def render_upload():
                     "auth": auth, 
                     "geo": geo, 
                     "heur": heur,
-                    "intel": intel  # <-- Vault the intel data for the UI
+                    "intel": intel
                 }
                 success_cases.append(case_id)
 
