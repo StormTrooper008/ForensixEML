@@ -10,6 +10,7 @@ from logic.auth import run_protocol_checks
 from logic.enrichment import get_ip_geolocation, enrich_hop_chain
 from logic.heuristics import scan_body_heuristics
 from logic.database import get_db_connection
+from logic.intel import check_ledger_intelligence
 
 def validate_rfc_structure(file_bytes: bytes) -> tuple[bool, str]:
     """Strictly validates RFC 5322 structure and mandatory email headers."""
@@ -94,13 +95,19 @@ def render_upload():
                 geo = get_ip_geolocation(orig_ip)
                 heur = scan_body_heuristics(decomp.get("body_preview", ""))
 
-                # 4. Risk Evaluation
+                # --- NEW: Run Ledger Cross-Reference ---
+                intel = check_ledger_intelligence(sender, orig_ip, heur.get("urls", []))
+
+                # 4. Risk Evaluation (Updated with Intel Penalty)
                 risk = 10
                 if auth["spf"]["status"] == "FAIL": risk += 35
                 if auth["dmarc"]["policy"] in ["NONE", "MISSING"]: risk += 10
                 if geo.get("threat_score", 0) > 40: risk += 25
                 risk += heur["score"]
+                risk += intel["penalty"]  # <-- Add the new ledger penalty
+                
                 status_label = "🔴 Malicious" if risk >= 75 else ("🟡 Suspicious" if risk >= 45 else "🟢 Safe")
+
 
                 # 5. Database Insertion (ONLY IF NOT EXISTING)
                 if not existing:
@@ -109,7 +116,7 @@ def render_upload():
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """, (case_id, uf.name, f_hash, sender, subject, orig_ip, risk, status_label))
                 
-                # 6. Save into session memory for active workbench (Do this for ALL valid files)
+                # 6. Save into session memory for active workbench (Updated to include intel)
                 st.session_state.analyzed_store[case_id] = {
                     "case_id": case_id,
                     "file_name": uf.name, 
@@ -119,7 +126,8 @@ def render_upload():
                     "decomp": decomp, 
                     "auth": auth, 
                     "geo": geo, 
-                    "heur": heur
+                    "heur": heur,
+                    "intel": intel  # <-- Vault the intel data for the UI
                 }
                 success_cases.append(case_id)
 

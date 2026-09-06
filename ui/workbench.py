@@ -42,7 +42,7 @@ def render_workbench():
         )
     # ------------------------------------------------
 
-    t1, t2, t3, t4 = st.tabs(["Headers & Body", "Authentication", "Geo Map", "Heuristics"])
+    t1, t2, t3, t4 = st.tabs(["Headers & Body", "Authentication", "Geo Map", "Threat Intel"])
 
     with t1:
         st.json(data["decomp"]["headers"])
@@ -66,10 +66,36 @@ def render_workbench():
             st_folium(m, width=800, height=400)
         else:
             st.warning("Valid geographical coordinates not found for this IP.")
+
             
     with t4:
-        st.metric("Heuristic Risk Penalty", f"+ {data['heur']['score']} points")
+        # Load data
+        heur_data = data.get("heur", {})
+        intel_data = data.get("intel", {})
+        
+        st.metric("Total Heuristic & Intel Penalty", f"+ {heur_data.get('score', 0) + intel_data.get('penalty', 0)} points")
+        
+        st.divider()
+        st.subheader("🛡️ Internal Ledger Cross-Reference")
+        
+        # Display Spoofing Alert
+        if intel_data.get("is_spoofing"):
+            st.error(f"🚨 **VIP SPOOFING DETECTED:** The sender is attempting to impersonate internal employee: **{intel_data.get('spoofed_user')}**")
+        else:
+            st.success("✅ No internal executive spoofing detected.")
+            
+        # Display Blocklist Hits
+        if intel_data.get("blocklist_hits"):
+            st.error("🚨 **BLOCKLIST HITS DETECTED:**")
+            for hit in intel_data["blocklist_hits"]:
+                st.write(f"- {hit}")
+        else:
+            st.success("✅ No indicators matched internal blocklist.")
+            
+        st.divider()
+        st.subheader("🎣 General Phishing Heuristics")
+        
         st.write("**Suspicious URLs Extracted:**")
-        st.code("\n".join(data["heur"]["urls"]) if data["heur"]["urls"] else "None detected", language="text")
+        st.code("\n".join(heur_data.get("urls", [])) if heur_data.get("urls") else "None detected", language="text")
         st.write("**Social Engineering Trigger Keywords:**")
-        st.code(", ".join(data["heur"]["keywords"]) if data["heur"]["keywords"] else "None detected", language="text")
+        st.code(", ".join(heur_data.get("keywords", [])) if heur_data.get("keywords") else "None detected", language="text")
