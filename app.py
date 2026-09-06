@@ -18,12 +18,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Global Session State
+# --- Global Session State ---
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "analyzed_store" not in st.session_state:
     st.session_state.analyzed_store = {}
-if "nav_page" not in st.session_state:
-    st.session_state.nav_page = "🏠 Main Dashboard"
+if "current_page" not in st.session_state:
+    st.session_state.current_page = "🏠 Main Dashboard"
 if "selected_case" not in st.session_state:
     st.session_state.selected_case = None
 
@@ -52,26 +53,31 @@ else:
         "⚙️ Settings & User"
     ]
 
+    # Callback to sync the radio button with our shadow variable
+    def sync_navigation():
+        st.session_state.current_page = st.session_state.nav_radio
+
     with st.sidebar:
         st.markdown("## 💾 **Email Forensics**")
         st.divider()
-        # Radio button controlled by session_state for dynamic redirecting
-        page = st.radio(
+        st.radio(
             "Navigation Engine", 
             nav_options,
-            index=nav_options.index(st.session_state.nav_page) if st.session_state.nav_page in nav_options else 0,
-            key="sidebar_nav"
+            index=nav_options.index(st.session_state.current_page) if st.session_state.current_page in nav_options else 0,
+            key="nav_radio",
+            on_change=sync_navigation
         )
-        st.session_state.nav_page = page
 
-    # Route according to active page
-    if page == "🏠 Main Dashboard":
+    # Route according to the shadow variable
+    active_page = st.session_state.current_page
+    
+    if active_page == "🏠 Main Dashboard":
         render_dashboard()
-    elif page == "📂 Upload & Ingest":
+    elif active_page == "📂 Upload & Ingest":
         render_upload()
-    elif page == "🔬 Investigation Workbench":
+    elif active_page == "🔬 Investigation Workbench":
         render_workbench()
-    elif page == "🗄️ Database Ledger":
+    elif active_page == "🗄️ Database Ledger":
         render_ledger()
-    elif page == "⚙️ Settings & User":
+    elif active_page == "⚙️ Settings & User":
         render_settings()

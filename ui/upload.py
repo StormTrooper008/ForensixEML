@@ -136,10 +136,13 @@ def render_upload():
             for err in errors:
                 st.markdown(err)
 
-        # Handle Successful Upload & Automatic Redirect
+# Handle Successful Upload & Automatic Redirect
         if success_cases:
             # Point to the last processed case
             st.session_state.selected_case = success_cases[-1]
-            st.session_state.nav_page = "🔬 Investigation Workbench"
-            st.success(f"Vaulted {len(success_cases)} valid case(s). Redirecting to Workbench...")
+            
+            # Update the shadow variable instead of the widget key
+            st.session_state.current_page = "🔬 Investigation Workbench"
+            
+            # Instantly trigger the page reload
             st.rerun()
