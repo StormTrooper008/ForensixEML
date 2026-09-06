@@ -8,7 +8,7 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # 1. Cases Table (Now includes telemetry column)
+    # 1. Cases Table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS cases (
             case_id TEXT PRIMARY KEY,
@@ -20,15 +20,24 @@ def init_db():
             risk_score INTEGER,
             status TEXT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_analyzed DATETIME DEFAULT CURRENT_TIMESTAMP,
             telemetry TEXT
         )
     """)
 
-    # Safe Migration: Add telemetry column to older DBs if it doesn't exist
+    # Safe Migrations for existing databases
     try:
         cursor.execute("ALTER TABLE cases ADD COLUMN telemetry TEXT")
     except sqlite3.OperationalError:
-        pass # Column already exists, safe to ignore
+        pass 
+
+    try:
+        # SQLite quirk: You cannot use DEFAULT CURRENT_TIMESTAMP in an ALTER TABLE command.
+        # Fix: Add the column as a standard DATETIME, then manually update existing rows.
+        cursor.execute("ALTER TABLE cases ADD COLUMN last_analyzed DATETIME")
+        cursor.execute("UPDATE cases SET last_analyzed = timestamp WHERE last_analyzed IS NULL")
+    except sqlite3.OperationalError:
+        pass
 
     # 2. Employees Table
     cursor.execute("""
@@ -62,7 +71,7 @@ def init_db():
 
     conn.commit()
     conn.close()
-
+    
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row

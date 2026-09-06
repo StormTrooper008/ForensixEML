@@ -4,7 +4,14 @@ import json
 from logic.database import get_db_connection
 
 def render_ledger():
-    st.markdown("<h2>Organizational Ledger</h2>", unsafe_allow_html=True)
+    # --- NEW ALIGNED HEADER WITH REFRESH BUTTON ---
+    header_col1, header_col2 = st.columns([5, 1])
+    with header_col1:
+        st.markdown("<h2>Organizational Ledger</h2>", unsafe_allow_html=True)
+    with header_col2:
+        st.write("") # Quick spacer to push the button down slightly so it aligns with the text
+        if st.button("🔄 Refresh Data", use_container_width=True):
+            st.rerun()
     
     conn = get_db_connection()
     tab_cases, tab_emps, tab_blocks, tab_manage = st.tabs([
@@ -13,9 +20,9 @@ def render_ledger():
     
     # --- TAB 1: CASES VAULT ---
     with tab_cases:
-        # UPDATED: Placed 'status' first and sorted by 'risk_score' descending
+        # Added 'last_analyzed' to the SELECT statement
         df_cases = pd.read_sql_query(
-            "SELECT status, risk_score, case_id, file_name, sender, origin_ip, timestamp FROM cases ORDER BY risk_score DESC", 
+            "SELECT status, risk_score, case_id, file_name, sender, origin_ip, timestamp, last_analyzed FROM cases ORDER BY risk_score DESC", 
             conn
         )
         

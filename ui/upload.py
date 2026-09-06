@@ -118,18 +118,19 @@ def render_upload():
                 telemetry_str = json.dumps(telemetry_package)
 
                 if not existing:
+                    # New files get both timestamp and last_analyzed automatically set via SQLite defaults
                     cursor.execute("""
                         INSERT INTO cases (case_id, file_name, sha256, sender, subject, origin_ip, risk_score, status, telemetry)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (case_id, uf.name, f_hash, sender, subject, orig_ip, risk, status_label, telemetry_str))
                 else:
-                    # OVERWRITE the existing database row with the new intelligence score
+                    # OVERWRITE the intelligence score and UPDATE last_analyzed, but PRESERVE original timestamp
                     cursor.execute("""
                         UPDATE cases 
-                        SET risk_score = ?, status = ?, telemetry = ?, timestamp = CURRENT_TIMESTAMP
+                        SET risk_score = ?, status = ?, telemetry = ?, last_analyzed = CURRENT_TIMESTAMP
                         WHERE case_id = ?
                     """, (risk, status_label, telemetry_str, case_id))
-                
+                    
                 # 6. Save into session memory for active workbench
                 st.session_state.analyzed_store[case_id] = {
                     "case_id": case_id,
