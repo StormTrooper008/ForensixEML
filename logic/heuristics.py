@@ -6,18 +6,15 @@ def scan_body_heuristics(body_text: str) -> Dict[str, Any]:
     if not body_text:
         return {"urls": [], "keywords": [], "score": 0}
 
-    # Extract HTTP/HTTPS links
     urls: List[str] = re.findall(r'(https?://[^\s]+)', body_text)
     
-    # Social engineering triggers
     trigger_words = ["urgent", "verify", "suspend", "immediate", "password", "invoice", "bank"]
     found_keywords = [kw for kw in trigger_words if kw in body_text.lower()]
 
-    # Calculate heuristic penalty
     penalty = (len(urls) * 5) + (len(found_keywords) * 10)
     
     return {
         "urls": urls,
         "keywords": found_keywords,
-        "score": min(penalty, 100) # Cap at 100
+        "score": min(penalty, 100) 
     }
