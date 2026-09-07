@@ -5,7 +5,6 @@ import io
 from logic.database import get_db_connection
 
 def render_ledger():
-    # --- HEADER WITH REFRESH BUTTON ---
     header_col1, header_col2 = st.columns([5, 1])
     with header_col1:
         st.markdown("<h2>Organizational Ledger</h2>", unsafe_allow_html=True)
@@ -74,17 +73,20 @@ def render_ledger():
                 st.info("Vault is empty.")
 
     # =========================================================
-    # TAB 2: EMPLOYEE ROSTER (With CSV Import/Export)
+    # TAB 2: EMPLOYEE ROSTER
     # =========================================================
     with tab_emps:
-        df_emps = pd.read_sql_query("SELECT id, full_name, email, designation, notes, timestamp_added, last_modified FROM employees", conn)
+        df_emps = pd.read_sql_query(
+            "SELECT emp_id, full_name, email, designation, notes, timestamp_added, last_modified FROM employees ORDER BY full_name ASC", 
+            conn
+        )
+        df_emps.insert(0, 'Row #', range(1, 1 + len(df_emps)))
         
         emp_col1, emp_col2 = st.columns([5, 2])
         with emp_col1:
             st.dataframe(df_emps, use_container_width=True, hide_index=True)
         with emp_col2:
             st.subheader("Roster Actions")
-            # Export CSV
             csv_emps = df_emps.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="📥 Export Roster CSV",
@@ -94,7 +96,6 @@ def render_ledger():
                 use_container_width=True
             )
             
-            # Import CSV
             uploaded_emps = st.file_uploader("Bulk Upload Employees (.csv)", type=["csv"], key="emp_csv")
             if uploaded_emps is not None:
                 if st.button("Process Roster CSV", use_container_width=True):
@@ -103,9 +104,9 @@ def render_ledger():
                         inserted = 0
                         for _, row in imported_df.iterrows():
                             conn.execute("""
-                                INSERT OR IGNORE INTO employees (full_name, email, designation, notes)
-                                VALUES (?, ?, ?, ?)
-                            """, (row.get('full_name', ''), row.get('email', ''), row.get('designation', ''), row.get('notes', '')))
+                                INSERT OR IGNORE INTO employees (emp_id, full_name, email, designation, notes)
+                                VALUES (?, ?, ?, ?, ?)
+                            """, (row.get('emp_id', ''), row.get('full_name', ''), row.get('email', ''), row.get('designation', ''), row.get('notes', '')))
                             inserted += 1
                         conn.commit()
                         st.success(f"Successfully processed {inserted} records!")
@@ -114,17 +115,20 @@ def render_ledger():
                         st.error(f"Import failed: {e}")
 
     # =========================================================
-    # TAB 3: BLOCKLIST (With CSV Import/Export)
+    # TAB 3: BLOCKLIST
     # =========================================================
     with tab_blocks:
-        df_blocks = pd.read_sql_query("SELECT id, indicator_type, indicator_value, reason, notes, timestamp_added, last_modified FROM blocklist", conn)
+        df_blocks = pd.read_sql_query(
+            "SELECT indicator_type, indicator_value, reason, notes, timestamp_added, last_modified FROM blocklist ORDER BY timestamp_added DESC", 
+            conn
+        )
+        df_blocks.insert(0, 'Row #', range(1, 1 + len(df_blocks)))
         
         blk_col1, blk_col2 = st.columns([5, 2])
         with blk_col1:
             st.dataframe(df_blocks, use_container_width=True, hide_index=True)
         with blk_col2:
             st.subheader("Indicator Actions")
-            # Export CSV
             csv_blocks = df_blocks.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="📥 Export Blocklist CSV",
@@ -134,7 +138,6 @@ def render_ledger():
                 use_container_width=True
             )
             
-            # Import CSV
             uploaded_blocks = st.file_uploader("Bulk Upload Blocklist (.csv)", type=["csv"], key="blk_csv")
             if uploaded_blocks is not None:
                 if st.button("Process Blocklist CSV", use_container_width=True):
@@ -154,7 +157,7 @@ def render_ledger():
                         st.error(f"Import failed: {e}")
         
     # =========================================================
-    # TAB 4: DATA MANAGEMENT (Cases, Employees & Blocklist)
+    # TAB 4: DATA MANAGEMENT
     # =========================================================
     with tab_manage:
         st.markdown("### 🛠️ Case Vault Management")
@@ -187,7 +190,6 @@ def render_ledger():
             
         st.divider()
 
-        # Split into two columns for Employee and Blocklist Management
         mgmt_col1, mgmt_col2 = st.columns(2)
         
         # --- EMPLOYEE MANAGEMENT ---
@@ -197,6 +199,7 @@ def render_ledger():
             
             if emp_action == "Add New":
                 with st.form("add_emp_form"):
+                    e_emp_id = st.text_input("Corporate Employee ID", placeholder="e.g., EMP-101")
                     e_name = st.text_input("Full Legal Name")
                     e_email = st.text_input("Corporate Email")
                     e_role = st.text_input("Designation")
@@ -204,9 +207,9 @@ def render_ledger():
                     if st.form_submit_button("Confirm Add"):
                         try:
                             conn.execute("""
-                                INSERT INTO employees (full_name, email, designation, notes) 
-                                VALUES (?, ?, ?, ?)
-                            """, (e_name, e_email, e_role, e_notes))
+                                INSERT INTO employees (emp_id, full_name, email, designation, notes) 
+                                VALUES (?, ?, ?, ?, ?)
+                            """, (e_emp_id, e_name, e_email, e_role, e_notes))
                             conn.commit()
                             st.success("Employee registered.")
                             st.rerun()
@@ -215,10 +218,19 @@ def render_ledger():
                             
             elif emp_action == "Edit Existing":
                 if not df_emps.empty:
-                    target_emp_email = st.selectbox("Select Employee to Edit", df_emps["email"].tolist())
-                    current_emp = df_emps[df_emps["email"] == target_emp_email].iloc[0]
+                    # Create a clean display string: "EMP-101 | Alice (alice@corp.com)"
+                    display_list = df_emps.apply(
+                        lambda r: f"{r['emp_id']} | {r['full_name']} ({r['email']})", axis=1
+                    ).tolist()
+                    
+                    selected_display = st.selectbox("Select Employee by ID", display_list)
+                    
+                    # Extract the ID from the selected string
+                    target_emp_id = selected_display.split(" | ")[0]
+                    current_emp = df_emps[df_emps["emp_id"] == target_emp_id].iloc[0]
                     
                     with st.form("edit_emp_form"):
+                        new_emp_id = st.text_input("Corporate Employee ID", value=current_emp["emp_id"])
                         new_name = st.text_input("Full Legal Name", value=current_emp["full_name"])
                         new_email = st.text_input("Corporate Email", value=current_emp["email"])
                         new_role = st.text_input("Designation", value=current_emp["designation"])
@@ -228,9 +240,9 @@ def render_ledger():
                             try:
                                 conn.execute("""
                                     UPDATE employees 
-                                    SET full_name = ?, email = ?, designation = ?, notes = ?, last_modified = CURRENT_TIMESTAMP
-                                    WHERE email = ?
-                                """, (new_name, new_email, new_role, new_notes, target_emp_email))
+                                    SET emp_id = ?, full_name = ?, email = ?, designation = ?, notes = ?, last_modified = CURRENT_TIMESTAMP
+                                    WHERE emp_id = ?
+                                """, (new_emp_id, new_name, new_email, new_role, new_notes, target_emp_id))
                                 conn.commit()
                                 st.success("Employee updated.")
                                 st.rerun()
@@ -242,9 +254,15 @@ def render_ledger():
             elif emp_action == "Delete Existing":
                 if not df_emps.empty:
                     with st.form("del_emp_form"):
-                        del_target = st.selectbox("Select Employee to Remove", df_emps["email"].tolist())
+                        display_list = df_emps.apply(
+                            lambda r: f"{r['emp_id']} | {r['full_name']} ({r['email']})", axis=1
+                        ).tolist()
+                        
+                        selected_display = st.selectbox("Select Employee by ID to Remove", display_list)
+                        target_emp_id = selected_display.split(" | ")[0]
+                        
                         if st.form_submit_button("Confirm Delete", type="primary"):
-                            conn.execute("DELETE FROM employees WHERE email = ?", (del_target,))
+                            conn.execute("DELETE FROM employees WHERE emp_id = ?", (target_emp_id,))
                             conn.commit()
                             st.success("Employee removed.")
                             st.rerun()

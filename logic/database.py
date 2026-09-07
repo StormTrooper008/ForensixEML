@@ -1,10 +1,4 @@
 import sqlite3
-import os
-from typing import Dict, Any
-
-DB_PATH = "forensics.db"
-
-import sqlite3
 
 DB_PATH = "forensics.db"
 
@@ -12,7 +6,7 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # 1. Cases Table (Added 'notes')
+    # 1. Cases Table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS cases (
             case_id TEXT PRIMARY KEY,
@@ -29,7 +23,6 @@ def init_db():
             notes TEXT
         )
     """)
-    # Safe Migrations for cases
     try: cursor.execute("ALTER TABLE cases ADD COLUMN telemetry TEXT")
     except sqlite3.OperationalError: pass
     try: 
@@ -39,10 +32,11 @@ def init_db():
     try: cursor.execute("ALTER TABLE cases ADD COLUMN notes TEXT")
     except sqlite3.OperationalError: pass
 
-    # 2. Employees Table (Added 'notes', 'timestamp_added', 'last_modified')
+    # 2. Employees Table (Now with emp_id)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS employees (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            emp_id TEXT UNIQUE,
             full_name TEXT,
             email TEXT UNIQUE,
             designation TEXT,
@@ -51,8 +45,9 @@ def init_db():
             last_modified DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    # Safe Migrations for employees
     try: cursor.execute("ALTER TABLE employees ADD COLUMN notes TEXT")
+    except sqlite3.OperationalError: pass
+    try: cursor.execute("ALTER TABLE employees ADD COLUMN emp_id TEXT")
     except sqlite3.OperationalError: pass
     try:
         cursor.execute("ALTER TABLE employees ADD COLUMN timestamp_added DATETIME")
@@ -61,7 +56,7 @@ def init_db():
         cursor.execute("UPDATE employees SET last_modified = CURRENT_TIMESTAMP WHERE last_modified IS NULL")
     except sqlite3.OperationalError: pass
 
-    # 3. Blocklist Table (Added 'notes', 'timestamp_added', 'last_modified')
+    # 3. Blocklist Table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS blocklist (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -73,7 +68,6 @@ def init_db():
             last_modified DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    # Safe Migrations for blocklist
     try: cursor.execute("ALTER TABLE blocklist ADD COLUMN notes TEXT")
     except sqlite3.OperationalError: pass
     try:
@@ -93,7 +87,7 @@ def init_db():
         )
     """)
 
-    # 5. Crash Logs Table (NEW)
+    # 5. Crash Logs Table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS crash_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
