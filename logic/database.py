@@ -32,11 +32,11 @@ def init_db():
     try: cursor.execute("ALTER TABLE cases ADD COLUMN notes TEXT")
     except sqlite3.OperationalError: pass
 
-    # 2. Employees Table (Now with emp_id)
+    # 2. Personnel Table (Replaces Employees)
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS employees (
+        CREATE TABLE IF NOT EXISTS personnel (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            emp_id TEXT UNIQUE,
+            org_id TEXT UNIQUE,
             full_name TEXT,
             email TEXT UNIQUE,
             designation TEXT,
@@ -45,16 +45,6 @@ def init_db():
             last_modified DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    try: cursor.execute("ALTER TABLE employees ADD COLUMN notes TEXT")
-    except sqlite3.OperationalError: pass
-    try: cursor.execute("ALTER TABLE employees ADD COLUMN emp_id TEXT")
-    except sqlite3.OperationalError: pass
-    try:
-        cursor.execute("ALTER TABLE employees ADD COLUMN timestamp_added DATETIME")
-        cursor.execute("ALTER TABLE employees ADD COLUMN last_modified DATETIME")
-        cursor.execute("UPDATE employees SET timestamp_added = CURRENT_TIMESTAMP WHERE timestamp_added IS NULL")
-        cursor.execute("UPDATE employees SET last_modified = CURRENT_TIMESTAMP WHERE last_modified IS NULL")
-    except sqlite3.OperationalError: pass
 
     # 3. Blocklist Table
     cursor.execute("""

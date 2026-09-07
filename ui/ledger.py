@@ -17,8 +17,8 @@ def render_ledger():
             st.rerun()
     
     conn = get_db_connection()
-    tab_cases, tab_emps, tab_blocks, tab_manage = st.tabs([
-        "🗄️ Cases Vault", "👥 Employee Roster", "🚫 Blocklist Indicators", "⚙️ Data Management"
+    tab_cases, tab_pers, tab_blocks, tab_manage = st.tabs([
+        "🗄️ Cases Vault", "👥 Personnel Roster", "🚫 Blocklist Indicators", "⚙️ Data Management"
     ])
     
     # =========================================================
@@ -76,40 +76,40 @@ def render_ledger():
                 st.info("Vault is empty.")
 
     # =========================================================
-    # TAB 2: EMPLOYEE ROSTER
+    # TAB 2: PERSONNEL ROSTER
     # =========================================================
-    with tab_emps:
-        df_emps = pd.read_sql_query(
-            "SELECT emp_id, full_name, email, designation, notes, timestamp_added, last_modified FROM employees ORDER BY full_name ASC", 
+    with tab_pers:
+        df_pers = pd.read_sql_query(
+            "SELECT org_id, full_name, email, designation, notes, timestamp_added, last_modified FROM personnel ORDER BY full_name ASC", 
             conn
         )
-        df_emps.insert(0, 'Row #', range(1, 1 + len(df_emps)))
+        df_pers.insert(0, 'Row #', range(1, 1 + len(df_pers)))
         
-        emp_col1, emp_col2 = st.columns([5, 2])
-        with emp_col1:
-            st.dataframe(df_emps, use_container_width=True, hide_index=True)
-        with emp_col2:
+        per_col1, per_col2 = st.columns([5, 2])
+        with per_col1:
+            st.dataframe(df_pers, use_container_width=True, hide_index=True)
+        with per_col2:
             st.subheader("Roster Actions")
-            csv_emps = df_emps.to_csv(index=False).encode('utf-8')
+            csv_pers = df_pers.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="📥 Export Roster CSV",
-                data=csv_emps,
-                file_name="employee_roster.csv",
+                data=csv_pers,
+                file_name="personnel_roster.csv",
                 mime="text/csv",
                 use_container_width=True
             )
             
-            uploaded_emps = st.file_uploader("Bulk Upload Employees (.csv)", type=["csv"], key="emp_csv")
-            if uploaded_emps is not None:
+            uploaded_pers = st.file_uploader("Bulk Upload Personnel (.csv)", type=["csv"], key="per_csv")
+            if uploaded_pers is not None:
                 if st.button("Process Roster CSV", use_container_width=True):
                     try:
-                        imported_df = pd.read_csv(uploaded_emps)
+                        imported_df = pd.read_csv(uploaded_pers)
                         inserted = 0
                         for _, row in imported_df.iterrows():
                             conn.execute("""
-                                INSERT OR IGNORE INTO employees (emp_id, full_name, email, designation, notes)
+                                INSERT OR IGNORE INTO personnel (org_id, full_name, email, designation, notes)
                                 VALUES (?, ?, ?, ?, ?)
-                            """, (row.get('emp_id', ''), row.get('full_name', ''), row.get('email', ''), row.get('designation', ''), row.get('notes', '')))
+                            """, (row.get('org_id', ''), row.get('full_name', ''), row.get('email', ''), row.get('designation', ''), row.get('notes', '')))
                             inserted += 1
                         conn.commit()
                         st.success(f"Successfully processed {inserted} records!")
@@ -195,96 +195,120 @@ def render_ledger():
 
         mgmt_col1, mgmt_col2 = st.columns(2)
         
-        # --- EMPLOYEE MANAGEMENT ---
+        # --- PERSONNEL MANAGEMENT ---
         with mgmt_col1:
-            st.markdown("### 👥 Manage Employees")
-            emp_action = st.radio("Action", ["Add New", "Edit Existing", "Delete Existing"], key="emp_action", horizontal=True)
+            st.markdown("### 👥 Manage Personnel")
+            per_action = st.radio("Action", ["Add New", "Edit Existing", "Delete Existing"], key="per_action", horizontal=True)
             
-            if emp_action == "Add New":
-                with st.form("add_emp_form"):
-                    e_emp_id = st.text_input("Corporate Employee ID", placeholder="e.g., EMP-101")
-                    e_name = st.text_input("Full Legal Name", placeholder="e.g., Jane Doe")
-                    e_email = st.text_input("Corporate Email", placeholder="e.g., jane.doe@corp.com")
-                    e_role = st.text_input("Designation", placeholder="e.g., Financial Controller")
-                    e_notes = st.text_area("Notes", placeholder="VIP user / High-risk target")
+            if per_action == "Add New":
+                with st.form("add_per_form"):
+                    p_org_id = st.text_input("Organization ID", placeholder="e.g., EMP-101, STU-2026")
+                    p_name = st.text_input("Full Name", placeholder="e.g., Jane Doe")
+                    p_email = st.text_input("Official Email", placeholder="e.g., jane.doe@institution.edu")
+                    p_role = st.text_input("Role / Title", placeholder="e.g., Faculty, Analyst, Student")
+                    p_notes = st.text_area("Notes", placeholder="VIP user / High-risk target")
                     
                     if st.form_submit_button("Confirm Add"):
-                        # 1. Check for empty mandatory fields with specific examples
-                        if not e_emp_id.strip():
-                            st.error("❌ **Missing Data:** Corporate Employee ID is required. \n*Example: `EMP-101`*")
-                        elif not e_name.strip():
-                            st.error("❌ **Missing Data:** Full Legal Name is required. \n*Example: `Jane Doe`*")
-                        elif not e_email.strip():
-                            st.error("❌ **Missing Data:** Corporate Email is required. \n*Example: `jane.doe@corp.com`*")
+                        p_email_clean = p_email.strip().lower()
+                        
+                        if not p_org_id.strip():
+                            st.error("❌ **Missing Data:** Organization ID is required. \n*Example: `FAC-402` or `EMP-101`*")
+                        elif not p_name.strip():
+                            st.error("❌ **Missing Data:** Full Name is required. \n*Example: `Jane Doe`*")
+                        elif not p_email_clean:
+                            st.error("❌ **Missing Data:** Official Email is required. \n*Example: `jane.doe@institution.edu`*")
+                        elif not re.match(r"^[^@]+@[^@]+\.[^@]+$", p_email_clean):
+                            st.error("❌ **Format Error:** Not a valid email address. \n*Example: `jane.doe@institution.edu`*")
                         else:
-                            # 2. Database Insertion with specific duplicate tracking
                             try:
                                 conn.execute("""
-                                    INSERT INTO employees (emp_id, full_name, email, designation, notes) 
+                                    INSERT INTO personnel (org_id, full_name, email, designation, notes) 
                                     VALUES (?, ?, ?, ?, ?)
-                                """, (e_emp_id.strip(), e_name.strip(), e_email.strip(), e_role.strip(), e_notes.strip()))
+                                """, (p_org_id.strip(), p_name.strip(), p_email_clean, p_role.strip(), p_notes.strip()))
                                 conn.commit()
-                                st.success(f"✅ Employee {e_name} successfully registered.")
+                                st.success(f"✅ Personnel {p_name.strip()} successfully registered.")
                                 st.rerun()
                             except Exception as e:
                                 error_msg = str(e)
-                                # Catch specific SQLite UNIQUE constraint errors
-                                if "employees.email" in error_msg:
-                                    st.error(f"⚠️ **Duplicate Entry:** The email `{e_email}` is already assigned to another employee.")
-                                elif "employees.emp_id" in error_msg:
-                                    st.error(f"⚠️ **Duplicate Entry:** The ID `{e_emp_id}` is already in use by another employee.")
+                                if "personnel.email" in error_msg:
+                                    st.error(f"⚠️ **Duplicate Entry:** The email `{p_email_clean}` is already assigned.")
+                                elif "personnel.org_id" in error_msg:
+                                    st.error(f"⚠️ **Duplicate Entry:** The ID `{p_org_id.strip()}` is already in use.")
                                 else:
                                     st.error(f"🚨 **Database Error:** {error_msg}")
-                
-            elif emp_action == "Edit Existing":
-                if not df_emps.empty:
-                    display_list = df_emps.apply(
-                        lambda r: f"{r['emp_id']} | {r['full_name']} ({r['email']})", axis=1
+                            
+            elif per_action == "Edit Existing":
+                if not df_pers.empty:
+                    display_list = df_pers.apply(
+                        lambda r: f"{r['org_id']} | {r['full_name']} ({r['email']})", axis=1
                     ).tolist()
                     
-                    selected_display = st.selectbox("Select Employee by ID", display_list)
-                    target_emp_id = selected_display.split(" | ")[0]
-                    current_emp = df_emps[df_emps["emp_id"] == target_emp_id].iloc[0]
+                    selected_display = st.selectbox("Select Personnel by ID", display_list)
+                    target_org_id = selected_display.split(" | ")[0]
+                    current_per = df_pers[df_pers["org_id"] == target_org_id].iloc[0]
                     
-                    with st.form("edit_emp_form"):
-                        new_emp_id = st.text_input("Corporate Employee ID", value=current_emp["emp_id"])
-                        new_name = st.text_input("Full Legal Name", value=current_emp["full_name"])
-                        new_email = st.text_input("Corporate Email", value=current_emp["email"])
-                        new_role = st.text_input("Designation", value=current_emp["designation"])
-                        new_notes = st.text_area("Notes", value=current_emp["notes"] if current_emp["notes"] else "")
-                        
-                        if st.form_submit_button("Update Employee", type="primary"):
-                            try:
-                                conn.execute("""
-                                    UPDATE employees 
-                                    SET emp_id = ?, full_name = ?, email = ?, designation = ?, notes = ?, last_modified = CURRENT_TIMESTAMP
-                                    WHERE emp_id = ?
-                                """, (new_emp_id, new_name, new_email, new_role, new_notes, target_emp_id))
-                                conn.commit()
-                                st.success("Employee updated.")
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"Error updating record: {e}")
-                else:
-                    st.info("No employees to edit.")
+                    # 1. Safely cast database values to strings to prevent NoneType errors
+                    safe_org_id = str(current_per["org_id"]) if current_per["org_id"] else ""
+                    safe_name = str(current_per["full_name"]) if current_per["full_name"] else ""
+                    safe_email = str(current_per["email"]) if current_per["email"] else ""
+                    safe_role = str(current_per["designation"]) if current_per["designation"] else ""
+                    safe_notes = str(current_per["notes"]) if current_per["notes"] else ""
 
-            elif emp_action == "Delete Existing":
-                if not df_emps.empty:
-                    with st.form("del_emp_form"):
-                        display_list = df_emps.apply(
-                            lambda r: f"{r['emp_id']} | {r['full_name']} ({r['email']})", axis=1
+                    with st.form("edit_per_form"):
+                        new_org_id = st.text_input("Organization ID", value=safe_org_id)
+                        new_name = st.text_input("Full Name", value=safe_name)
+                        new_email = st.text_input("Official Email", value=safe_email)
+                        new_role = st.text_input("Role / Title", value=safe_role)
+                        new_notes = st.text_area("Notes", value=safe_notes)
+                        
+                        if st.form_submit_button("Update Personnel", type="primary"):
+                            # 2. Safely cast to string before applying string methods like .strip()
+                            new_email_clean = str(new_email).strip().lower() if new_email else ""
+                            new_org_id_clean = str(new_org_id).strip() if new_org_id else ""
+                            new_name_clean = str(new_name).strip() if new_name else ""
+                            new_role_clean = str(new_role).strip() if new_role else ""
+                            new_notes_clean = str(new_notes).strip() if new_notes else ""
+                            
+                            if not new_org_id_clean or not new_name_clean or not new_email_clean:
+                                st.error("❌ **Missing Data:** ID, Name, and Email cannot be empty.")
+                            elif not re.match(r"^[^@]+@[^@]+\.[^@]+$", new_email_clean):
+                                st.error("❌ **Format Error:** Not a valid email address.")
+                            else:
+                                try:
+                                    conn.execute("""
+                                        UPDATE personnel 
+                                        SET org_id = ?, full_name = ?, email = ?, designation = ?, notes = ?, last_modified = CURRENT_TIMESTAMP
+                                        WHERE org_id = ?
+                                    """, (new_org_id_clean, new_name_clean, new_email_clean, new_role_clean, new_notes_clean, target_org_id))
+                                    conn.commit()
+                                    st.success("Personnel record updated.")
+                                    st.rerun()
+                                except Exception as e:
+                                    error_msg = str(e)
+                                    if "UNIQUE constraint failed" in error_msg:
+                                        st.error("⚠️ **Duplicate Entry:** That ID or Email conflicts with another user.")
+                                    else:
+                                        st.error(f"Error updating record: {e}")
+                else:
+                    st.info("No personnel to edit.")
+                    
+            elif per_action == "Delete Existing":
+                if not df_pers.empty:
+                    with st.form("del_per_form"):
+                        display_list = df_pers.apply(
+                            lambda r: f"{r['org_id']} | {r['full_name']} ({r['email']})", axis=1
                         ).tolist()
                         
-                        selected_display = st.selectbox("Select Employee by ID to Remove", display_list)
-                        target_emp_id = selected_display.split(" | ")[0]
+                        selected_display = st.selectbox("Select Personnel to Remove", display_list)
+                        target_org_id = selected_display.split(" | ")[0]
                         
                         if st.form_submit_button("Confirm Delete", type="primary"):
-                            conn.execute("DELETE FROM employees WHERE emp_id = ?", (target_emp_id,))
+                            conn.execute("DELETE FROM personnel WHERE org_id = ?", (target_org_id,))
                             conn.commit()
-                            st.success("Employee removed.")
+                            st.success("Personnel removed.")
                             st.rerun()
                 else:
-                    st.info("No employees to delete.")
+                    st.info("No personnel to delete.")
                     
         # --- BLOCKLIST MANAGEMENT ---
         with mgmt_col2:
@@ -300,8 +324,8 @@ def render_ledger():
                     
                     if st.form_submit_button("Confirm Add"):
                         b_val_clean = b_val.strip().lower()
+                        is_valid = True
                         
-                        # 1. Dynamic check for empty values with specific examples
                         if not b_val_clean:
                             if b_type == "EMAIL":
                                 st.error("❌ **Missing Data:** Please provide an email address. \n*Example: `attacker@phishmail.com`*")
@@ -309,44 +333,35 @@ def render_ledger():
                                 st.error("❌ **Missing Data:** Please provide a domain name. \n*Example: `evil-empire.com`*")
                             elif b_type == "IP":
                                 st.error("❌ **Missing Data:** Please provide an IP address. \n*Example: `185.220.101.5`*")
-                        else:
-                            # 2. Strict Format Validation
-                            is_valid = True
-                            
-                            if b_type == "EMAIL" and not re.match(r"^[^@]+@[^@]+\.[^@]+$", b_val_clean):
-                                st.error("❌ **Format Error:** Not a valid email. \n*Example: `attacker@phishmail.com`*")
+                            is_valid = False
+                        elif b_type == "EMAIL" and not re.match(r"^[^@]+@[^@]+\.[^@]+$", b_val_clean):
+                            st.error("❌ **Format Error:** Not a valid email. \n*Example: `attacker@phishmail.com`*")
+                            is_valid = False
+                        elif b_type == "DOMAIN" and not re.match(r"^[a-z0-9.-]+\.[a-z]{2,}$", b_val_clean):
+                            st.error("❌ **Format Error:** Not a valid domain. Must include a TLD. \n*Example: `evil-empire.com`*")
+                            is_valid = False
+                        elif b_type == "IP":
+                            try:
+                                ipaddress.ip_address(b_val_clean)
+                            except ValueError:
+                                st.error("❌ **Format Error:** Not a valid IP address. \n*Example: `185.220.101.5`*")
                                 is_valid = False
-                                
-                            elif b_type == "DOMAIN":
-                                # Forces at least one dot and a 2+ character TLD (.com, .in)
-                                if not re.match(r"^[a-z0-9.-]+\.[a-z]{2,}$", b_val_clean):
-                                    st.error("❌ **Format Error:** Not a valid domain. Must include a TLD (like .com). \n*Example: `evil-empire.com`*")
-                                    is_valid = False
-                                    
-                            elif b_type == "IP":
-                                # Uses Python's native networking library to prove it is a real IP
-                                try:
-                                    ipaddress.ip_address(b_val_clean)
-                                except ValueError:
-                                    st.error("❌ **Format Error:** Not a mathematically valid IPv4 or IPv6 address. \n*Example: `185.220.101.5`*")
-                                    is_valid = False
 
-                            # 3. Database Insertion
-                            if is_valid:
-                                try:
-                                    conn.execute("""
-                                        INSERT INTO blocklist (indicator_type, indicator_value, reason, notes) 
-                                        VALUES (?, ?, ?, ?)
-                                    """, (b_type, b_val_clean, b_reason, b_notes))
-                                    conn.commit()
-                                    st.success(f"✅ {b_type} Indicator securely blocked.")
-                                    st.rerun()
-                                except Exception as e:
-                                    error_msg = str(e)
-                                    if "UNIQUE constraint failed" in error_msg:
-                                        st.error(f"⚠️ **Duplicate Entry:** `{b_val_clean}` is already in your blocklist.")
-                                    else:
-                                        st.error(f"🚨 **Database Error:** {error_msg}")
+                        if is_valid:
+                            try:
+                                conn.execute("""
+                                    INSERT INTO blocklist (indicator_type, indicator_value, reason, notes) 
+                                    VALUES (?, ?, ?, ?)
+                                """, (b_type, b_val_clean, b_reason, b_notes))
+                                conn.commit()
+                                st.success(f"✅ {b_type} Indicator securely blocked.")
+                                st.rerun()
+                            except Exception as e:
+                                error_msg = str(e)
+                                if "UNIQUE constraint failed" in error_msg:
+                                    st.error(f"⚠️ **Duplicate Entry:** `{b_val_clean}` is already in your blocklist.")
+                                else:
+                                    st.error(f"🚨 **Database Error:** {error_msg}")
                             
             elif blk_action == "Edit Existing":
                 if not df_blocks.empty:
@@ -356,10 +371,8 @@ def render_ledger():
                     with st.form("edit_blk_form"):
                         type_options = ["EMAIL", "DOMAIN", "IP"]
                         type_idx = type_options.index(current_blk["indicator_type"]) if current_blk["indicator_type"] in type_options else 0
-                        
                         new_type = st.selectbox("Type", type_options, index=type_idx)
                         
-                        # Safely cast database values to strings to prevent NoneType errors
                         safe_val = str(current_blk["indicator_value"]) if current_blk["indicator_value"] else ""
                         safe_reason = str(current_blk["reason"]) if current_blk["reason"] else ""
                         safe_notes = str(current_blk["notes"]) if current_blk["notes"] else ""
@@ -369,35 +382,27 @@ def render_ledger():
                         new_notes = st.text_area("Notes", value=safe_notes)
                         
                         if st.form_submit_button("Update Indicator", type="primary"):
-                            # Safely handle the formatting
                             b_val_clean = str(new_val).strip().lower() if new_val else ""
                             is_valid = True
                             
-                            # 1. Dynamic check for empty values with specific examples
                             if not b_val_clean:
-                                if new_type == "EMAIL":
-                                    st.error("❌ **Missing Data:** Please provide an email address. \n*Example: `attacker@phishmail.com`*")
-                                elif new_type == "DOMAIN":
-                                    st.error("❌ **Missing Data:** Please provide a domain name. \n*Example: `evil-empire.com`*")
-                                elif new_type == "IP":
-                                    st.error("❌ **Missing Data:** Please provide an IP address. \n*Example: `185.220.101.5`*")
+                                if new_type == "EMAIL": st.error("❌ **Missing Data:** Provide an email address.")
+                                elif new_type == "DOMAIN": st.error("❌ **Missing Data:** Provide a domain name.")
+                                elif new_type == "IP": st.error("❌ **Missing Data:** Provide an IP address.")
                                 is_valid = False
-                                
-                            # 2. Strict Format Validation
                             elif new_type == "EMAIL" and not re.match(r"^[^@]+@[^@]+\.[^@]+$", b_val_clean):
-                                st.error("❌ **Format Error:** Not a valid email. \n*Example: `attacker@phishmail.com`*")
+                                st.error("❌ **Format Error:** Not a valid email.")
                                 is_valid = False
                             elif new_type == "DOMAIN" and not re.match(r"^[a-z0-9.-]+\.[a-z]{2,}$", b_val_clean):
-                                st.error("❌ **Format Error:** Not a valid domain. Must include a TLD. \n*Example: `evil-empire.com`*")
+                                st.error("❌ **Format Error:** Not a valid domain. Must include a TLD.")
                                 is_valid = False
                             elif new_type == "IP":
                                 try:
                                     ipaddress.ip_address(b_val_clean)
                                 except ValueError:
-                                    st.error("❌ **Format Error:** Not a valid IP. \n*Example: `185.220.101.5`*")
+                                    st.error("❌ **Format Error:** Not a valid IP.")
                                     is_valid = False
                                     
-                            # 3. Database Update
                             if is_valid:
                                 try:
                                     conn.execute("""

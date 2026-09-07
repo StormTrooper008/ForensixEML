@@ -2,7 +2,7 @@ import re
 from logic.database import get_db_connection
 
 def check_ledger_intelligence(sender_header: str, origin_ip: str, extracted_urls: list) -> dict:
-    """Cross-references email artifacts against internal employees and blocklists."""
+    """Cross-references email artifacts against internal personnel and blocklists."""
     conn = get_db_connection()
     cursor = conn.cursor()
     
@@ -24,7 +24,7 @@ def check_ledger_intelligence(sender_header: str, origin_ip: str, extracted_urls
         
     if name_part:
         # Check if the display name matches a protected employee (case-insensitive)
-        cursor.execute("SELECT email, designation FROM employees WHERE full_name COLLATE NOCASE = ?", (name_part,))
+        cursor.execute("SELECT email, designation FROM personnel WHERE full_name COLLATE NOCASE = ?", (name_part,))
         emp = cursor.fetchone()
         
         # If the name matches, but the sending email doesn't match their real email: SPOOF DETECTED
