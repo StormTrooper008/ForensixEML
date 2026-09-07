@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import json
 import io
+import re
 from logic.database import get_db_connection
 
 def render_ledger():
@@ -280,17 +281,43 @@ def render_ledger():
                     b_val = st.text_input("Indicator Value")
                     b_reason = st.text_input("Reason")
                     b_notes = st.text_area("Notes", placeholder="Observed in campaign X")
+                    
                     if st.form_submit_button("Confirm Add"):
-                        try:
-                            conn.execute("""
-                                INSERT INTO blocklist (indicator_type, indicator_value, reason, notes) 
-                                VALUES (?, ?, ?, ?)
-                            """, (b_type, b_val, b_reason, b_notes))
-                            conn.commit()
-                            st.success("Indicator blocked.")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error: {e}")
+                        b_val_clean = b_val.strip().lower()
+                        
+                        # 1. Check for empty values
+                        if not b_val_clean:
+                            st.error("❌ **Missing Data:** Indicator Value cannot be empty.")
+                        else:
+                            # 2. Format Validation
+                            is_valid = True
+                            if b_type == "EMAIL" and "@" not in b_val_clean:
+                                st.error("❌ **Format Error:** Not a valid email. \n*Example: `attacker@phishmail.com`*")
+                                is_valid = False
+                            elif b_type == "DOMAIN" and (" " in b_val_clean or "@" in b_val_clean or "http" in b_val_clean):
+                                st.error("❌ **Format Error:** Not a valid domain. Do not include '@', 'https://', or spaces. \n*Example: `evil-empire.com`*")
+                                is_valid = False
+                            elif b_type == "IP" and not re.match(r"^[0-9a-fA-F\.:]+$", b_val_clean):
+                                st.error("❌ **Format Error:** Not a valid IP address. \n*Example: `185.220.101.5` or `2607:f8b0::123`*")
+                                is_valid = False
+
+                            # 3. Database Insertion
+                            if is_valid:
+                                try:
+                                    conn.execute("""
+                                        INSERT INTO blocklist (indicator_type, indicator_value, reason, notes) 
+                                        VALUES (?, ?, ?, ?)
+                                    """, (b_type, b_val_clean, b_reason, b_notes))
+                                    conn.commit()
+                                    st.success(f"✅ {b_type} Indicator securely blocked.")
+                                    st.rerun()
+                                except Exception as e:
+                                    error_msg = str(e)
+                                    # Catch specific SQLite errors
+                                    if "UNIQUE constraint failed" in error_msg:
+                                        st.error(f"⚠️ **Duplicate Entry:** `{b_val_clean}` is already in your blocklist.")
+                                    else:
+                                        st.error(f"🚨 **Database Error:** {error_msg}")
                             
             elif blk_action == "Edit Existing":
                 if not df_blocks.empty:
