@@ -3,6 +3,8 @@ import pandas as pd
 import json
 import io
 import re
+import ipaddress
+
 from logic.database import get_db_connection
 
 def render_ledger():
@@ -201,32 +203,46 @@ def render_ledger():
             if emp_action == "Add New":
                 with st.form("add_emp_form"):
                     e_emp_id = st.text_input("Corporate Employee ID", placeholder="e.g., EMP-101")
-                    e_name = st.text_input("Full Legal Name")
-                    e_email = st.text_input("Corporate Email")
-                    e_role = st.text_input("Designation")
+                    e_name = st.text_input("Full Legal Name", placeholder="e.g., Jane Doe")
+                    e_email = st.text_input("Corporate Email", placeholder="e.g., jane.doe@corp.com")
+                    e_role = st.text_input("Designation", placeholder="e.g., Financial Controller")
                     e_notes = st.text_area("Notes", placeholder="VIP user / High-risk target")
+                    
                     if st.form_submit_button("Confirm Add"):
-                        try:
-                            conn.execute("""
-                                INSERT INTO employees (emp_id, full_name, email, designation, notes) 
-                                VALUES (?, ?, ?, ?, ?)
-                            """, (e_emp_id, e_name, e_email, e_role, e_notes))
-                            conn.commit()
-                            st.success("Employee registered.")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error: {e}")
-                            
+                        # 1. Check for empty mandatory fields with specific examples
+                        if not e_emp_id.strip():
+                            st.error("❌ **Missing Data:** Corporate Employee ID is required. \n*Example: `EMP-101`*")
+                        elif not e_name.strip():
+                            st.error("❌ **Missing Data:** Full Legal Name is required. \n*Example: `Jane Doe`*")
+                        elif not e_email.strip():
+                            st.error("❌ **Missing Data:** Corporate Email is required. \n*Example: `jane.doe@corp.com`*")
+                        else:
+                            # 2. Database Insertion with specific duplicate tracking
+                            try:
+                                conn.execute("""
+                                    INSERT INTO employees (emp_id, full_name, email, designation, notes) 
+                                    VALUES (?, ?, ?, ?, ?)
+                                """, (e_emp_id.strip(), e_name.strip(), e_email.strip(), e_role.strip(), e_notes.strip()))
+                                conn.commit()
+                                st.success(f"✅ Employee {e_name} successfully registered.")
+                                st.rerun()
+                            except Exception as e:
+                                error_msg = str(e)
+                                # Catch specific SQLite UNIQUE constraint errors
+                                if "employees.email" in error_msg:
+                                    st.error(f"⚠️ **Duplicate Entry:** The email `{e_email}` is already assigned to another employee.")
+                                elif "employees.emp_id" in error_msg:
+                                    st.error(f"⚠️ **Duplicate Entry:** The ID `{e_emp_id}` is already in use by another employee.")
+                                else:
+                                    st.error(f"🚨 **Database Error:** {error_msg}")
+                
             elif emp_action == "Edit Existing":
                 if not df_emps.empty:
-                    # Create a clean display string: "EMP-101 | Alice (alice@corp.com)"
                     display_list = df_emps.apply(
                         lambda r: f"{r['emp_id']} | {r['full_name']} ({r['email']})", axis=1
                     ).tolist()
                     
                     selected_display = st.selectbox("Select Employee by ID", display_list)
-                    
-                    # Extract the ID from the selected string
                     target_emp_id = selected_display.split(" | ")[0]
                     current_emp = df_emps[df_emps["emp_id"] == target_emp_id].iloc[0]
                     
@@ -285,21 +301,35 @@ def render_ledger():
                     if st.form_submit_button("Confirm Add"):
                         b_val_clean = b_val.strip().lower()
                         
-                        # 1. Check for empty values
+                        # 1. Dynamic check for empty values with specific examples
                         if not b_val_clean:
-                            st.error("❌ **Missing Data:** Indicator Value cannot be empty.")
+                            if b_type == "EMAIL":
+                                st.error("❌ **Missing Data:** Please provide an email address. \n*Example: `attacker@phishmail.com`*")
+                            elif b_type == "DOMAIN":
+                                st.error("❌ **Missing Data:** Please provide a domain name. \n*Example: `evil-empire.com`*")
+                            elif b_type == "IP":
+                                st.error("❌ **Missing Data:** Please provide an IP address. \n*Example: `185.220.101.5`*")
                         else:
-                            # 2. Format Validation
+                            # 2. Strict Format Validation
                             is_valid = True
-                            if b_type == "EMAIL" and "@" not in b_val_clean:
+                            
+                            if b_type == "EMAIL" and not re.match(r"^[^@]+@[^@]+\.[^@]+$", b_val_clean):
                                 st.error("❌ **Format Error:** Not a valid email. \n*Example: `attacker@phishmail.com`*")
                                 is_valid = False
-                            elif b_type == "DOMAIN" and (" " in b_val_clean or "@" in b_val_clean or "http" in b_val_clean):
-                                st.error("❌ **Format Error:** Not a valid domain. Do not include '@', 'https://', or spaces. \n*Example: `evil-empire.com`*")
-                                is_valid = False
-                            elif b_type == "IP" and not re.match(r"^[0-9a-fA-F\.:]+$", b_val_clean):
-                                st.error("❌ **Format Error:** Not a valid IP address. \n*Example: `185.220.101.5` or `2607:f8b0::123`*")
-                                is_valid = False
+                                
+                            elif b_type == "DOMAIN":
+                                # Forces at least one dot and a 2+ character TLD (.com, .in)
+                                if not re.match(r"^[a-z0-9.-]+\.[a-z]{2,}$", b_val_clean):
+                                    st.error("❌ **Format Error:** Not a valid domain. Must include a TLD (like .com). \n*Example: `evil-empire.com`*")
+                                    is_valid = False
+                                    
+                            elif b_type == "IP":
+                                # Uses Python's native networking library to prove it is a real IP
+                                try:
+                                    ipaddress.ip_address(b_val_clean)
+                                except ValueError:
+                                    st.error("❌ **Format Error:** Not a mathematically valid IPv4 or IPv6 address. \n*Example: `185.220.101.5`*")
+                                    is_valid = False
 
                             # 3. Database Insertion
                             if is_valid:
@@ -313,7 +343,6 @@ def render_ledger():
                                     st.rerun()
                                 except Exception as e:
                                     error_msg = str(e)
-                                    # Catch specific SQLite errors
                                     if "UNIQUE constraint failed" in error_msg:
                                         st.error(f"⚠️ **Duplicate Entry:** `{b_val_clean}` is already in your blocklist.")
                                     else:
@@ -329,22 +358,62 @@ def render_ledger():
                         type_idx = type_options.index(current_blk["indicator_type"]) if current_blk["indicator_type"] in type_options else 0
                         
                         new_type = st.selectbox("Type", type_options, index=type_idx)
-                        new_val = st.text_input("Indicator Value", value=current_blk["indicator_value"])
-                        new_reason = st.text_input("Reason", value=current_blk["reason"])
-                        new_notes = st.text_area("Notes", value=current_blk["notes"] if current_blk["notes"] else "")
+                        
+                        # Safely cast database values to strings to prevent NoneType errors
+                        safe_val = str(current_blk["indicator_value"]) if current_blk["indicator_value"] else ""
+                        safe_reason = str(current_blk["reason"]) if current_blk["reason"] else ""
+                        safe_notes = str(current_blk["notes"]) if current_blk["notes"] else ""
+                        
+                        new_val = st.text_input("Indicator Value", value=safe_val)
+                        new_reason = st.text_input("Reason", value=safe_reason)
+                        new_notes = st.text_area("Notes", value=safe_notes)
                         
                         if st.form_submit_button("Update Indicator", type="primary"):
-                            try:
-                                conn.execute("""
-                                    UPDATE blocklist 
-                                    SET indicator_type = ?, indicator_value = ?, reason = ?, notes = ?, last_modified = CURRENT_TIMESTAMP
-                                    WHERE indicator_value = ?
-                                """, (new_type, new_val, new_reason, new_notes, target_indicator))
-                                conn.commit()
-                                st.success("Indicator updated.")
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"Error updating record: {e}")
+                            # Safely handle the formatting
+                            b_val_clean = str(new_val).strip().lower() if new_val else ""
+                            is_valid = True
+                            
+                            # 1. Dynamic check for empty values with specific examples
+                            if not b_val_clean:
+                                if new_type == "EMAIL":
+                                    st.error("❌ **Missing Data:** Please provide an email address. \n*Example: `attacker@phishmail.com`*")
+                                elif new_type == "DOMAIN":
+                                    st.error("❌ **Missing Data:** Please provide a domain name. \n*Example: `evil-empire.com`*")
+                                elif new_type == "IP":
+                                    st.error("❌ **Missing Data:** Please provide an IP address. \n*Example: `185.220.101.5`*")
+                                is_valid = False
+                                
+                            # 2. Strict Format Validation
+                            elif new_type == "EMAIL" and not re.match(r"^[^@]+@[^@]+\.[^@]+$", b_val_clean):
+                                st.error("❌ **Format Error:** Not a valid email. \n*Example: `attacker@phishmail.com`*")
+                                is_valid = False
+                            elif new_type == "DOMAIN" and not re.match(r"^[a-z0-9.-]+\.[a-z]{2,}$", b_val_clean):
+                                st.error("❌ **Format Error:** Not a valid domain. Must include a TLD. \n*Example: `evil-empire.com`*")
+                                is_valid = False
+                            elif new_type == "IP":
+                                try:
+                                    ipaddress.ip_address(b_val_clean)
+                                except ValueError:
+                                    st.error("❌ **Format Error:** Not a valid IP. \n*Example: `185.220.101.5`*")
+                                    is_valid = False
+                                    
+                            # 3. Database Update
+                            if is_valid:
+                                try:
+                                    conn.execute("""
+                                        UPDATE blocklist 
+                                        SET indicator_type = ?, indicator_value = ?, reason = ?, notes = ?, last_modified = CURRENT_TIMESTAMP
+                                        WHERE indicator_value = ?
+                                    """, (new_type, b_val_clean, new_reason, new_notes, target_indicator))
+                                    conn.commit()
+                                    st.success("Indicator updated.")
+                                    st.rerun()
+                                except Exception as e:
+                                    error_msg = str(e)
+                                    if "UNIQUE constraint failed" in error_msg:
+                                        st.error(f"⚠️ **Duplicate Entry:** `{b_val_clean}` is already in your blocklist.")
+                                    else:
+                                        st.error(f"🚨 **Database Error:** {error_msg}")
                 else:
                     st.info("Blocklist is empty.")
                             
