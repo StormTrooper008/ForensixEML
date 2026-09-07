@@ -20,11 +20,20 @@ def render_ledger():
     
     # --- TAB 1: CASES VAULT ---
     with tab_cases:
-        # Added 'last_analyzed' to the SELECT statement
-        df_cases = pd.read_sql_query(
-            "SELECT status, risk_score, case_id, file_name, sender, origin_ip, timestamp, last_analyzed FROM cases ORDER BY risk_score DESC", 
-            conn
-        )
+        if st.session_state.get("tz_pref") == "Local":
+            query = """
+                SELECT status, risk_score, case_id, file_name, sender, origin_ip, 
+                datetime(timestamp, 'localtime') as timestamp, 
+                datetime(last_analyzed, 'localtime') as last_analyzed 
+                FROM cases ORDER BY risk_score DESC
+            """
+        else:
+            query = """
+                SELECT status, risk_score, case_id, file_name, sender, origin_ip, timestamp, last_analyzed 
+                FROM cases ORDER BY risk_score DESC
+            """
+            
+        df_cases = pd.read_sql_query(query, conn)
         
         col1, col2 = st.columns([3, 1])
         with col1:

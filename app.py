@@ -27,6 +27,8 @@ if "current_page" not in st.session_state:
     st.session_state.current_page = "🏠 Main Dashboard"
 if "selected_case" not in st.session_state:
     st.session_state.selected_case = None
+if "tz_pref" not in st.session_state:               # <-- timezone
+    st.session_state.tz_pref = "UTC"                # <-- timezone
 
 def login():
     st.markdown("<h2>Email Forensics Platform Login</h2>", unsafe_allow_html=True)

@@ -16,8 +16,8 @@ def render_dashboard():
     
     # 2. Fetch Database Metrics
     conn = get_db_connection()
-    cases_df = pd.read_sql_query("SELECT * FROM cases ORDER BY timestamp DESC", conn)
-    conn.close()
+    # Get lightweight counts
+    cases_df = pd.read_sql_query("SELECT risk_score FROM cases", conn)
 
     total = len(cases_df)
     threats = len(cases_df[cases_df['risk_score'] >= 45]) if total > 0 else 0
@@ -26,39 +26,30 @@ def render_dashboard():
     
     # 3. Four-Column Custom Metric Cards
     col1, col2, col3, col4 = st.columns(4)
-    
-    col1.markdown(f"""
-        <div class="metric-card">
-            <div style="font-size: 14px; margin-bottom: 8px; opacity: 0.8;">📧 Total Tracked</div>
-            <div style="font-size: 28px; font-weight: bold;">{total}</div>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    col2.markdown(f"""
-        <div class="metric-card">
-            <div style="font-size: 14px; margin-bottom: 8px; opacity: 0.8;">🚨 Threats Detected</div>
-            <div style="font-size: 28px; font-weight: bold;">{threats}</div>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    col3.markdown(f"""
-        <div class="metric-card">
-            <div style="font-size: 14px; margin-bottom: 8px; opacity: 0.8;">⚠️ High Risk</div>
-            <div style="font-size: 28px; font-weight: bold;">{high_risk}</div>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    col4.markdown(f"""
-        <div class="metric-card">
-            <div style="font-size: 14px; margin-bottom: 8px; opacity: 0.8;">🛡️ Safe Emails</div>
-            <div style="font-size: 28px; font-weight: bold;">{safe}</div>
-        </div>
-    """, unsafe_allow_html=True)
+    col1.markdown(f'<div class="metric-card"><div style="font-size: 14px; margin-bottom: 8px; opacity: 0.8;">📧 Total Tracked</div><div style="font-size: 28px; font-weight: bold;">{total}</div></div>', unsafe_allow_html=True)
+    col2.markdown(f'<div class="metric-card"><div style="font-size: 14px; margin-bottom: 8px; opacity: 0.8;">🚨 Threats Detected</div><div style="font-size: 28px; font-weight: bold;">{threats}</div></div>', unsafe_allow_html=True)
+    col3.markdown(f'<div class="metric-card"><div style="font-size: 14px; margin-bottom: 8px; opacity: 0.8;">⚠️ High Risk</div><div style="font-size: 28px; font-weight: bold;">{high_risk}</div></div>', unsafe_allow_html=True)
+    col4.markdown(f'<div class="metric-card"><div style="font-size: 14px; margin-bottom: 8px; opacity: 0.8;">🛡️ Safe Emails</div><div style="font-size: 28px; font-weight: bold;">{safe}</div></div>', unsafe_allow_html=True)
 
-    st.write("") # Quick spacer
+    st.write("") 
     st.subheader("Recent Threat Activity")
     
+    # 4. Fetch Top 10 High-Risk Cases dynamically based on Timezone Pref
+    if st.session_state.get("tz_pref") == "Local":
+        query = """
+            SELECT status, risk_score, case_id, file_name, sender, datetime(timestamp, 'localtime') as timestamp 
+            FROM cases ORDER BY risk_score DESC LIMIT 10
+        """
+    else:
+        query = """
+            SELECT status, risk_score, case_id, file_name, sender, timestamp 
+            FROM cases ORDER BY risk_score DESC LIMIT 10
+        """
+        
+    recent_df = pd.read_sql_query(query, conn)
+    conn.close()
+    
     if total > 0:
-        st.dataframe(cases_df.head(10), use_container_width=True, hide_index=True)
+        st.dataframe(recent_df, use_container_width=True, hide_index=True)
     else:
         st.info("No cases ingested yet. Proceed to Upload & Ingest.")
