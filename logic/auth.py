@@ -1,6 +1,7 @@
 import dns.resolver
 import re
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+from logic.parser import verify_dkim
 
 
 def extract_domain(email_address: str) -> str:
@@ -103,13 +104,20 @@ def check_dmarc_policy(domain: str) -> Dict[str, Any]:
         return {"status": "ERROR", "policy": "ERROR", "details": str(e), "raw_dmarc": None}
 
 
-def run_protocol_checks(from_header: str, origin_ip: str) -> Dict[str, Any]:
+def run_protocol_checks(from_header: str, origin_ip: str, raw_bytes: Optional[bytes] = None) -> Dict[str, Any]:
     domain = extract_domain(from_header)
     spf_result = check_spf_record(domain, origin_ip)
     dmarc_result = check_dmarc_policy(domain)
+    
+    # Run DKIM if the raw email bytes are provided
+    if raw_bytes:
+        dkim_result = verify_dkim(raw_bytes)
+    else:
+        dkim_result = {"status": "UNCHECKED", "details": "Raw email bytes not passed to authentication engine."}
 
     return {
         "domain": domain,
         "spf": spf_result,
         "dmarc": dmarc_result,
+        "dkim": dkim_result,
     }

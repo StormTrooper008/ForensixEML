@@ -91,7 +91,7 @@ def render_upload():
                 orig_ip = decomp["origin_candidate"].get("ip", "")
                 subject = decomp["headers"].get("Subject", "(No Subject)")
 
-                auth = run_protocol_checks(sender, orig_ip)
+                auth = run_protocol_checks(sender, orig_ip, f_bytes)
                 decomp["hops"] = enrich_hop_chain(decomp["hops"])
                 geo = get_ip_geolocation(orig_ip)
                 heur = scan_body_heuristics(decomp.get("body_preview", ""))

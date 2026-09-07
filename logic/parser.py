@@ -2,6 +2,7 @@ import email
 from email import policy
 from email.message import EmailMessage  # <-- Add this explicit import
 import ipaddress
+import dkim
 import re
 from typing import Any, Dict, List, Optional
 
@@ -143,3 +144,23 @@ if __name__ == "__main__":
             print(json.dumps(output, indent=2))
     else:
         print(f"Error: {sample_path} not found. Please create it first.")
+
+def verify_dkim(raw_email_bytes):
+    """
+    Validates the DKIM cryptographic signature using the sender's public DNS records.
+    Requires the raw, unparsed byte string of the .eml file.
+    """
+    # --- BULLETPROOF GUARD FOR NONE OR EMPTY BYTES ---
+    if not raw_email_bytes:
+        return {"status": "UNCHECKED", "details": "No raw email bytes provided for DKIM verification."}
+    
+    try:
+        # dkim.verify reads the bytes, fetches the public key from DNS, and does the math
+        is_valid = dkim.verify(raw_email_bytes)
+        
+        if is_valid:
+            return {"status": "PASS", "details": "Cryptographic seal is intact. Content unmodified."}
+        else:
+            return {"status": "FAIL / MISSING", "details": "Signature broken, tampered, or not present."}
+    except Exception as e:
+        return {"status": "ERROR", "details": f"DKIM check failed: {e}"}

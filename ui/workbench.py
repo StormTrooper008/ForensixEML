@@ -70,8 +70,17 @@ def render_workbench():
                 st.rerun()
         
     with t2:
-        st.metric("SPF Verification", data["auth"]["spf"]["status"])
-        st.metric("DMARC Enforcement", data["auth"]["dmarc"]["policy"])
+        # Create 3 columns so the badges sit nicely next to each other
+        auth_c1, auth_c2, auth_c3 = st.columns(3)
+        with auth_c1:
+            st.metric("SPF Verification", data["auth"]["spf"]["status"])
+        with auth_c2:
+            # Use .get() as a failsafe for legacy cases in your vault
+            st.metric("DKIM Signature", data["auth"].get("dkim", {}).get("status", "UNCHECKED"))
+        with auth_c3:
+            st.metric("DMARC Enforcement", data["auth"]["dmarc"]["policy"])
+            
+        st.divider()
         st.json(data["auth"])
         
     with t3:
