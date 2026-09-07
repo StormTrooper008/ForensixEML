@@ -13,7 +13,7 @@ def check_ledger_intelligence(sender_header: str, origin_ip: str, extracted_urls
         "penalty": 0
     }
     
-    # --- 1. Employee Spoofing Detection ---
+    # --- 1. personnel Spoofing Detection ---
     # Attempt to split "Name <email@domain.com>"
     name_part = ""
     email_part = sender_header
@@ -23,7 +23,7 @@ def check_ledger_intelligence(sender_header: str, origin_ip: str, extracted_urls
         email_part = match.group(2).strip()
         
     if name_part:
-        # Check if the display name matches a protected employee (case-insensitive)
+        # Check if the display name matches a protected personnel (case-insensitive)
         cursor.execute("SELECT email, designation FROM personnel WHERE full_name COLLATE NOCASE = ?", (name_part,))
         emp = cursor.fetchone()
         
