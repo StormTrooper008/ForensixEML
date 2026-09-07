@@ -9,6 +9,7 @@ from ui.settings import render_settings
 
 st.set_page_config(page_title="Email Forensics Platform", page_icon="💾", layout="wide")
 
+
 st.markdown("""
     <style>
         .hero-banner { background: #1e3a8a; padding: 25px; border-radius: 12px; color: white; margin-bottom: 20px; }
@@ -29,6 +30,17 @@ if "selected_case" not in st.session_state:
     st.session_state.selected_case = None
 if "tz_pref" not in st.session_state:               # <-- timezone
     st.session_state.tz_pref = "UTC"                # <-- timezone
+
+# --- GLOBAL UI CONCEALMENT ---
+    # This ensures the hamburger menu stays hidden across ALL pages if Dev Mode is off
+if not st.session_state.get("dev_mode", False):
+    st.markdown("""
+        <style>
+            #MainMenu {visibility: hidden;}
+            [data-testid="stToolbar"] {visibility: hidden;}
+        </style>
+    """, unsafe_allow_html=True)
+    #-----------------------------
 
 def login():
     st.markdown("<h2>Email Forensics Platform Login</h2>", unsafe_allow_html=True)
