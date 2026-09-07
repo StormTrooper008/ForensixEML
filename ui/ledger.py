@@ -1,15 +1,16 @@
 import streamlit as st
 import pandas as pd
 import json
+import io
 from logic.database import get_db_connection
 
 def render_ledger():
-    # --- NEW ALIGNED HEADER WITH REFRESH BUTTON ---
+    # --- HEADER WITH REFRESH BUTTON ---
     header_col1, header_col2 = st.columns([5, 1])
     with header_col1:
         st.markdown("<h2>Organizational Ledger</h2>", unsafe_allow_html=True)
     with header_col2:
-        st.write("") # Quick spacer to push the button down slightly so it aligns with the text
+        st.write("") 
         if st.button("🔄 Refresh Data", use_container_width=True):
             st.rerun()
     
@@ -18,18 +19,21 @@ def render_ledger():
         "🗄️ Cases Vault", "👥 Employee Roster", "🚫 Blocklist Indicators", "⚙️ Data Management"
     ])
     
-    # --- TAB 1: CASES VAULT ---
+    # =========================================================
+    # TAB 1: CASES VAULT
+    # =========================================================
     with tab_cases:
         if st.session_state.get("tz_pref") == "Local":
             query = """
                 SELECT status, risk_score, case_id, file_name, sender, origin_ip, 
                 datetime(timestamp, 'localtime') as timestamp, 
-                datetime(last_analyzed, 'localtime') as last_analyzed 
+                datetime(last_analyzed, 'localtime') as last_analyzed,
+                notes
                 FROM cases ORDER BY risk_score DESC
             """
         else:
             query = """
-                SELECT status, risk_score, case_id, file_name, sender, origin_ip, timestamp, last_analyzed 
+                SELECT status, risk_score, case_id, file_name, sender, origin_ip, timestamp, last_analyzed, notes 
                 FROM cases ORDER BY risk_score DESC
             """
             
@@ -69,23 +73,126 @@ def render_ledger():
             else:
                 st.info("Vault is empty.")
 
-    # --- TAB 2: EMPLOYEE ROSTER ---
+    # =========================================================
+    # TAB 2: EMPLOYEE ROSTER (With CSV Import/Export)
+    # =========================================================
     with tab_emps:
-        df_emps = pd.read_sql_query("SELECT id, full_name, email, designation FROM employees", conn)
-        st.dataframe(df_emps, use_container_width=True, hide_index=True)
-            
-    # --- TAB 3: BLOCKLIST ---
-    with tab_blocks:
-        df_blocks = pd.read_sql_query("SELECT id, indicator_type, indicator_value, reason FROM blocklist", conn)
-        st.dataframe(df_blocks, use_container_width=True, hide_index=True)
+        df_emps = pd.read_sql_query("SELECT id, full_name, email, designation, notes, timestamp_added, last_modified FROM employees", conn)
         
-    # --- TAB 4: DATA MANAGEMENT (Add/Edit/Delete) ---
+        emp_col1, emp_col2 = st.columns([5, 2])
+        with emp_col1:
+            st.dataframe(df_emps, use_container_width=True, hide_index=True)
+        with emp_col2:
+            st.subheader("Roster Actions")
+            # Export CSV
+            csv_emps = df_emps.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Export Roster CSV",
+                data=csv_emps,
+                file_name="employee_roster.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+            
+            # Import CSV
+            uploaded_emps = st.file_uploader("Bulk Upload Employees (.csv)", type=["csv"], key="emp_csv")
+            if uploaded_emps is not None:
+                if st.button("Process Roster CSV", use_container_width=True):
+                    try:
+                        imported_df = pd.read_csv(uploaded_emps)
+                        inserted = 0
+                        for _, row in imported_df.iterrows():
+                            conn.execute("""
+                                INSERT OR IGNORE INTO employees (full_name, email, designation, notes)
+                                VALUES (?, ?, ?, ?)
+                            """, (row.get('full_name', ''), row.get('email', ''), row.get('designation', ''), row.get('notes', '')))
+                            inserted += 1
+                        conn.commit()
+                        st.success(f"Successfully processed {inserted} records!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Import failed: {e}")
+
+    # =========================================================
+    # TAB 3: BLOCKLIST (With CSV Import/Export)
+    # =========================================================
+    with tab_blocks:
+        df_blocks = pd.read_sql_query("SELECT id, indicator_type, indicator_value, reason, notes, timestamp_added, last_modified FROM blocklist", conn)
+        
+        blk_col1, blk_col2 = st.columns([5, 2])
+        with blk_col1:
+            st.dataframe(df_blocks, use_container_width=True, hide_index=True)
+        with blk_col2:
+            st.subheader("Indicator Actions")
+            # Export CSV
+            csv_blocks = df_blocks.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Export Blocklist CSV",
+                data=csv_blocks,
+                file_name="threat_blocklist.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+            
+            # Import CSV
+            uploaded_blocks = st.file_uploader("Bulk Upload Blocklist (.csv)", type=["csv"], key="blk_csv")
+            if uploaded_blocks is not None:
+                if st.button("Process Blocklist CSV", use_container_width=True):
+                    try:
+                        imported_blk = pd.read_csv(uploaded_blocks)
+                        inserted = 0
+                        for _, row in imported_blk.iterrows():
+                            conn.execute("""
+                                INSERT OR IGNORE INTO blocklist (indicator_type, indicator_value, reason, notes)
+                                VALUES (?, ?, ?, ?)
+                            """, (row.get('indicator_type', 'DOMAIN'), row.get('indicator_value', ''), row.get('reason', ''), row.get('notes', '')))
+                            inserted += 1
+                        conn.commit()
+                        st.success(f"Successfully imported {inserted} indicators!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Import failed: {e}")
+        
+    # =========================================================
+    # TAB 4: DATA MANAGEMENT (Cases, Employees & Blocklist)
+    # =========================================================
     with tab_manage:
+        st.markdown("### 🛠️ Case Vault Management")
+        c_df = pd.read_sql_query("SELECT case_id, file_name, status, notes FROM cases ORDER BY timestamp DESC", conn)
+        
+        if not c_df.empty:
+            case_action = st.radio("Case Action:", ["Add / Edit Notes", "Purge Case Record"], horizontal=True)
+            target_case = st.selectbox("Select Target Case:", c_df["case_id"].tolist())
+            
+            if case_action == "Add / Edit Notes":
+                current_note = c_df[c_df["case_id"] == target_case].iloc[0]["notes"]
+                with st.form("edit_case_notes"):
+                    new_note = st.text_area("Analyst Case Notes:", value=current_note if current_note else "")
+                    if st.form_submit_button("Save Notes", type="primary"):
+                        conn.execute("UPDATE cases SET notes = ? WHERE case_id = ?", (new_note, target_case))
+                        conn.commit()
+                        st.success(f"Notes updated for {target_case}.")
+                        st.rerun()
+                        
+            elif case_action == "Purge Case Record":
+                with st.form("delete_case_form"):
+                    st.warning(f"Permanently remove {target_case} from the forensic vault?")
+                    if st.form_submit_button("Confirm Deletion", type="primary"):
+                        conn.execute("DELETE FROM cases WHERE case_id = ?", (target_case,))
+                        conn.commit()
+                        st.success(f"Case {target_case} purged.")
+                        st.rerun()
+        else:
+            st.info("No cases available to modify.")
+            
+        st.divider()
+
+        # Split into two columns for Employee and Blocklist Management
         mgmt_col1, mgmt_col2 = st.columns(2)
         
         # --- EMPLOYEE MANAGEMENT ---
         with mgmt_col1:
-            st.subheader("Manage Employees")
+            st.markdown("### 👥 Manage Employees")
             emp_action = st.radio("Action", ["Add New", "Edit Existing", "Delete Existing"], key="emp_action", horizontal=True)
             
             if emp_action == "Add New":
@@ -93,33 +200,37 @@ def render_ledger():
                     e_name = st.text_input("Full Legal Name")
                     e_email = st.text_input("Corporate Email")
                     e_role = st.text_input("Designation")
+                    e_notes = st.text_area("Notes", placeholder="VIP user / High-risk target")
                     if st.form_submit_button("Confirm Add"):
                         try:
-                            conn.execute("INSERT INTO employees (full_name, email, designation) VALUES (?, ?, ?)", (e_name, e_email, e_role))
+                            conn.execute("""
+                                INSERT INTO employees (full_name, email, designation, notes) 
+                                VALUES (?, ?, ?, ?)
+                            """, (e_name, e_email, e_role, e_notes))
                             conn.commit()
-                            st.success("Employee added.")
+                            st.success("Employee registered.")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Error: {e}")
                             
             elif emp_action == "Edit Existing":
                 if not df_emps.empty:
-                    target_emp_email = st.selectbox("Select Employee", df_emps["email"].tolist())
-                    # Retrieve the specific employee's current data
+                    target_emp_email = st.selectbox("Select Employee to Edit", df_emps["email"].tolist())
                     current_emp = df_emps[df_emps["email"] == target_emp_email].iloc[0]
                     
                     with st.form("edit_emp_form"):
                         new_name = st.text_input("Full Legal Name", value=current_emp["full_name"])
                         new_email = st.text_input("Corporate Email", value=current_emp["email"])
                         new_role = st.text_input("Designation", value=current_emp["designation"])
+                        new_notes = st.text_area("Notes", value=current_emp["notes"] if current_emp["notes"] else "")
                         
                         if st.form_submit_button("Update Employee", type="primary"):
                             try:
                                 conn.execute("""
                                     UPDATE employees 
-                                    SET full_name = ?, email = ?, designation = ? 
+                                    SET full_name = ?, email = ?, designation = ?, notes = ?, last_modified = CURRENT_TIMESTAMP
                                     WHERE email = ?
-                                """, (new_name, new_email, new_role, target_emp_email))
+                                """, (new_name, new_email, new_role, new_notes, target_emp_email))
                                 conn.commit()
                                 st.success("Employee updated.")
                                 st.rerun()
@@ -142,7 +253,7 @@ def render_ledger():
                     
         # --- BLOCKLIST MANAGEMENT ---
         with mgmt_col2:
-            st.subheader("Manage Blocklist")
+            st.markdown("### 🚫 Manage Blocklist")
             blk_action = st.radio("Action", ["Add New", "Edit Existing", "Delete Existing"], key="blk_action", horizontal=True)
             
             if blk_action == "Add New":
@@ -150,9 +261,13 @@ def render_ledger():
                     b_type = st.selectbox("Type", ["EMAIL", "DOMAIN", "IP"])
                     b_val = st.text_input("Indicator Value")
                     b_reason = st.text_input("Reason")
+                    b_notes = st.text_area("Notes", placeholder="Observed in campaign X")
                     if st.form_submit_button("Confirm Add"):
                         try:
-                            conn.execute("INSERT INTO blocklist (indicator_type, indicator_value, reason) VALUES (?, ?, ?)", (b_type, b_val, b_reason))
+                            conn.execute("""
+                                INSERT INTO blocklist (indicator_type, indicator_value, reason, notes) 
+                                VALUES (?, ?, ?, ?)
+                            """, (b_type, b_val, b_reason, b_notes))
                             conn.commit()
                             st.success("Indicator blocked.")
                             st.rerun()
@@ -161,26 +276,25 @@ def render_ledger():
                             
             elif blk_action == "Edit Existing":
                 if not df_blocks.empty:
-                    target_indicator = st.selectbox("Select Indicator", df_blocks["indicator_value"].tolist())
-                    # Retrieve the specific indicator's current data
+                    target_indicator = st.selectbox("Select Indicator to Edit", df_blocks["indicator_value"].tolist())
                     current_blk = df_blocks[df_blocks["indicator_value"] == target_indicator].iloc[0]
                     
                     with st.form("edit_blk_form"):
-                        # Get index of current type to set it as default in selectbox
                         type_options = ["EMAIL", "DOMAIN", "IP"]
                         type_idx = type_options.index(current_blk["indicator_type"]) if current_blk["indicator_type"] in type_options else 0
                         
                         new_type = st.selectbox("Type", type_options, index=type_idx)
                         new_val = st.text_input("Indicator Value", value=current_blk["indicator_value"])
                         new_reason = st.text_input("Reason", value=current_blk["reason"])
+                        new_notes = st.text_area("Notes", value=current_blk["notes"] if current_blk["notes"] else "")
                         
                         if st.form_submit_button("Update Indicator", type="primary"):
                             try:
                                 conn.execute("""
                                     UPDATE blocklist 
-                                    SET indicator_type = ?, indicator_value = ?, reason = ? 
+                                    SET indicator_type = ?, indicator_value = ?, reason = ?, notes = ?, last_modified = CURRENT_TIMESTAMP
                                     WHERE indicator_value = ?
-                                """, (new_type, new_val, new_reason, target_indicator))
+                                """, (new_type, new_val, new_reason, new_notes, target_indicator))
                                 conn.commit()
                                 st.success("Indicator updated.")
                                 st.rerun()

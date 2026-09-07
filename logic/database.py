@@ -4,11 +4,15 @@ from typing import Dict, Any
 
 DB_PATH = "forensics.db"
 
+import sqlite3
+
+DB_PATH = "forensics.db"
+
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # 1. Cases Table
+    # 1. Cases Table (Added 'notes')
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS cases (
             case_id TEXT PRIMARY KEY,
@@ -21,43 +25,63 @@ def init_db():
             status TEXT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
             last_analyzed DATETIME DEFAULT CURRENT_TIMESTAMP,
-            telemetry TEXT
+            telemetry TEXT,
+            notes TEXT
         )
     """)
-
-    # Safe Migrations for existing databases
-    try:
-        cursor.execute("ALTER TABLE cases ADD COLUMN telemetry TEXT")
-    except sqlite3.OperationalError:
-        pass 
-
-    try:
-        # SQLite quirk: You cannot use DEFAULT CURRENT_TIMESTAMP in an ALTER TABLE command.
-        # Fix: Add the column as a standard DATETIME, then manually update existing rows.
+    # Safe Migrations for cases
+    try: cursor.execute("ALTER TABLE cases ADD COLUMN telemetry TEXT")
+    except sqlite3.OperationalError: pass
+    try: 
         cursor.execute("ALTER TABLE cases ADD COLUMN last_analyzed DATETIME")
         cursor.execute("UPDATE cases SET last_analyzed = timestamp WHERE last_analyzed IS NULL")
-    except sqlite3.OperationalError:
-        pass
+    except sqlite3.OperationalError: pass
+    try: cursor.execute("ALTER TABLE cases ADD COLUMN notes TEXT")
+    except sqlite3.OperationalError: pass
 
-    # 2. Employees Table
+    # 2. Employees Table (Added 'notes', 'timestamp_added', 'last_modified')
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS employees (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             full_name TEXT,
             email TEXT UNIQUE,
-            designation TEXT
+            designation TEXT,
+            notes TEXT,
+            timestamp_added DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_modified DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # Safe Migrations for employees
+    try: cursor.execute("ALTER TABLE employees ADD COLUMN notes TEXT")
+    except sqlite3.OperationalError: pass
+    try:
+        cursor.execute("ALTER TABLE employees ADD COLUMN timestamp_added DATETIME")
+        cursor.execute("ALTER TABLE employees ADD COLUMN last_modified DATETIME")
+        cursor.execute("UPDATE employees SET timestamp_added = CURRENT_TIMESTAMP WHERE timestamp_added IS NULL")
+        cursor.execute("UPDATE employees SET last_modified = CURRENT_TIMESTAMP WHERE last_modified IS NULL")
+    except sqlite3.OperationalError: pass
 
-    # 3. Blocklist Table
+    # 3. Blocklist Table (Added 'notes', 'timestamp_added', 'last_modified')
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS blocklist (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             indicator_type TEXT,
             indicator_value TEXT UNIQUE,
-            reason TEXT
+            reason TEXT,
+            notes TEXT,
+            timestamp_added DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_modified DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # Safe Migrations for blocklist
+    try: cursor.execute("ALTER TABLE blocklist ADD COLUMN notes TEXT")
+    except sqlite3.OperationalError: pass
+    try:
+        cursor.execute("ALTER TABLE blocklist ADD COLUMN timestamp_added DATETIME")
+        cursor.execute("ALTER TABLE blocklist ADD COLUMN last_modified DATETIME")
+        cursor.execute("UPDATE blocklist SET timestamp_added = CURRENT_TIMESTAMP WHERE timestamp_added IS NULL")
+        cursor.execute("UPDATE blocklist SET last_modified = CURRENT_TIMESTAMP WHERE last_modified IS NULL")
+    except sqlite3.OperationalError: pass
 
     # 4. Users Table
     cursor.execute("""
@@ -69,13 +93,23 @@ def init_db():
         )
     """)
 
+    # 5. Crash Logs Table (NEW)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS crash_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            error_message TEXT,
+            traceback TEXT,
+            user TEXT
+        )
+    """)
+
     conn.commit()
     conn.close()
-    
+
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
-# Automatically run migration when imported
 init_db()
