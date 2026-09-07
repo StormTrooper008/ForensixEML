@@ -98,10 +98,8 @@ def parse_step1_headers(eml_bytes: bytes) -> Dict[str, Any]:
             hop_details["extracted_ips"].append(ip_info)
 
             # Earliest public or internal IP discovered is marked as the origin candidate
-            if origin_candidate is None and classification["scope"] in [
-                "PUBLIC_INTERNET",
-                "RFC_1918_INTERNAL",
-            ]:
+            # Strictly hunt for the earliest PUBLIC IP (skipping internal network routing)
+            if origin_candidate is None and classification["scope"] == "PUBLIC_INTERNET":
                 origin_candidate = {
                     "ip": ip,
                     "scope": classification["scope"],
