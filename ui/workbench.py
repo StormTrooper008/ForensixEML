@@ -46,7 +46,28 @@ def render_workbench():
 
     with t1:
         st.json(data["decomp"]["headers"])
-        st.text_area("Plain Text Body Extract", data["decomp"]["body_preview"], height=200, disabled=True)
+        
+        # 1. Create a unique toggle key tied to the currently selected case
+        toggle_key = f"expand_body_{selected_case}"
+        if toggle_key not in st.session_state:
+            st.session_state[toggle_key] = False
+            
+        # 2. Render based on the toggle's current state
+        if not st.session_state[toggle_key]:
+            # MINIMIZED STATE: Disabled Preview
+            st.text_area("Plain Text Body Extract (Preview)", data["decomp"].get("body_preview", "No text available."), height=150, disabled=True)
+            
+            if st.button("🔽 Expand Full Text", key=f"btn_expand_{selected_case}"):
+                st.session_state[toggle_key] = True
+                st.rerun()
+        else:
+            # EXPANDED STATE: Interactable Full Body
+            full_text = data["decomp"].get("body_full", data["decomp"].get("body_preview", "No full text available."))
+            st.text_area("Plain Text Body Extract (Full)", full_text, height=400, disabled=False)
+            
+            if st.button("🔼 Minimize to Preview", key=f"btn_min_{selected_case}"):
+                st.session_state[toggle_key] = False
+                st.rerun()
         
     with t2:
         st.metric("SPF Verification", data["auth"]["spf"]["status"])

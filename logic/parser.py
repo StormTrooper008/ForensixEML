@@ -125,6 +125,7 @@ def parse_step1_headers(eml_bytes: bytes) -> Dict[str, Any]:
         "total_hops": len(hops),
         "origin_candidate": origin_candidate
         or {"ip": "Unknown", "scope": "NONE", "label": "No IP extracted"},
+        "body_full": body_text,  # <-- ADD THIS NEW LINE
         "body_preview": (
             body_text[:180] + "..." if len(body_text) > 180 else body_text
         ),
