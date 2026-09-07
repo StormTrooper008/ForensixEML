@@ -99,3 +99,8 @@ def render_workbench():
         st.code("\n".join(heur_data.get("urls", [])) if heur_data.get("urls") else "None detected", language="text")
         st.write("**Social Engineering Trigger Keywords:**")
         st.code(", ".join(heur_data.get("keywords", [])) if heur_data.get("keywords") else "None detected", language="text")
+
+
+    st.divider()
+    tz_mode = "Local System Time" if str(st.session_state.get("tz_pref")).startswith("Local") else "UTC (Coordinated Universal Time)"
+    st.caption(f"🕒 **Timezone Mode:** All forensic timelines and extracted headers are currently displayed in **{tz_mode}**.")
