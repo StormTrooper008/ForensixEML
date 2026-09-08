@@ -1,6 +1,12 @@
 import ipaddress
-import requests
+import os
+import geoip2.database
+from geoip2.errors import AddressNotFoundError
 from typing import Dict, Any, List
+
+# Define paths to your new local databases
+CITY_DB_PATH = os.path.join("databases", "GeoLite2-City.mmdb")
+ASN_DB_PATH = os.path.join("databases", "GeoLite2-ASN.mmdb")
 
 def is_public_ip(ip_str: str) -> bool:
     """Verifies whether an IP is globally routable over the public internet."""
@@ -11,7 +17,7 @@ def is_public_ip(ip_str: str) -> bool:
         return False
 
 def get_ip_geolocation(ip_str: str) -> Dict[str, Any]:
-    """Resolves coordinates, ASN, infrastructure type (Cloud/Tor)."""
+    """Resolves coordinates, ASN, infrastructure type (Cloud/Tor) using OFFLINE MaxMind DBs."""
     default_payload = {
         "ip": ip_str,
         "country": "Unknown / Internal",
@@ -32,57 +38,68 @@ def get_ip_geolocation(ip_str: str) -> Dict[str, Any]:
     if not is_public_ip(ip_str):
         return default_payload
 
-    try:
-        # Added hosting and proxy fields to the API query
-        url = f"http://ip-api.com/json/{ip_str}?fields=status,message,country,countryCode,city,lat,lon,isp,org,as,hosting,proxy"
-        response = requests.get(url, timeout=4)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("status") == "success":
-                isp = data.get("isp") or ""
-                org = data.get("org") or ""
-                asn = data.get("as") or "Unknown ASN"
-                check_str = f"{isp} {org} {asn}".lower()
+    # Initialize baseline for public IP
+    payload = default_payload.copy()
+    payload["is_public"] = True
+    payload["isp"] = "Unknown ISP"
+    payload["org"] = "Unknown Org"
+    payload["country"] = "Unknown"
+    
+    # 1. Fetch City & Coordinate Data (Offline)
+    if os.path.exists(CITY_DB_PATH):
+        try:
+            with geoip2.database.Reader(CITY_DB_PATH) as reader:
+                city_response = reader.city(ip_str)
+                if city_response.country.name:
+                    payload["country"] = city_response.country.name
+                if city_response.country.iso_code:
+                    payload["country_code"] = city_response.country.iso_code
+                if city_response.city.name:
+                    payload["city"] = city_response.city.name
+                if city_response.location.latitude and city_response.location.longitude:
+                    payload["lat"] = float(city_response.location.latitude)
+                    payload["lon"] = float(city_response.location.longitude)
+        except AddressNotFoundError:
+            pass
+        except Exception as e:
+            print(f"MaxMind City DB Error: {e}")
 
-                # Cloud / Data Center Hosting Detection
-                cloud_keywords = ["digitalocean", "linode", "ovh", "hetzner", "amazon", "aws", "google", "azure"]
-                is_cloud = bool(data.get("hosting")) or any(k in check_str for k in cloud_keywords)
+    # 2. Fetch Provider & ASN Data (Offline)
+    if os.path.exists(ASN_DB_PATH):
+        try:
+            with geoip2.database.Reader(ASN_DB_PATH) as reader:
+                asn_response = reader.asn(ip_str)
+                if asn_response.autonomous_system_number:
+                    payload["asn"] = f"AS{asn_response.autonomous_system_number}"
+                if asn_response.autonomous_system_organization:
+                    payload["org"] = asn_response.autonomous_system_organization
+                    payload["isp"] = asn_response.autonomous_system_organization # Free DB maps org to ISP
+        except AddressNotFoundError:
+            pass
+        except Exception as e:
+            print(f"MaxMind ASN DB Error: {e}")
 
-                # Tor / Proxy Detection
-                tor_keywords = ["tor exit", "tor-exit", "relayon", "mullvad", "vpn"]
-                is_tor = bool(data.get("proxy")) or any(k in check_str for k in tor_keywords)
+    # 3. Local Cloud / Tor Threat Heuristics
+    check_str = f"{payload['isp']} {payload['org']} {payload['asn']}".lower()
+    
+    cloud_keywords = ["digitalocean", "linode", "ovh", "hetzner", "amazon", "aws", "google", "azure"]
+    is_cloud = any(k in check_str for k in cloud_keywords)
 
-                # Threat Score Calibration
-                threat_score = 10
-                if is_cloud:
-                    threat_score += 35
-                if is_tor:
-                    threat_score += 60
+    tor_keywords = ["tor exit", "tor-exit", "relayon", "mullvad", "vpn"]
+    is_tor = any(k in check_str for k in tor_keywords)
 
-                infra_type = "Tor Relay" if is_tor else ("Cloud Hosting" if is_cloud else "Standard ISP")
+    threat_score = 10
+    if is_cloud:
+        threat_score += 35
+    if is_tor:
+        threat_score += 60
 
-                return {
-                    "ip": ip_str,
-                    "country": data.get("country", "Unknown"),
-                    "country_code": data.get("countryCode", "--"),
-                    "city": data.get("city", "Unknown"),
-                    "lat": float(data.get("lat", 0.0)),
-                    "lon": float(data.get("lon", 0.0)),
-                    "isp": isp or "Unknown ISP",
-                    "org": org or "Unknown Org",
-                    "asn": asn,
-                    "infra_type": infra_type,
-                    "is_tor": is_tor,
-                    "is_cloud": is_cloud,
-                    "threat_score": min(threat_score, 100),
-                    "is_public": True,
-                }
-    except Exception:
-        pass
+    payload["is_tor"] = is_tor
+    payload["is_cloud"] = is_cloud
+    payload["threat_score"] = min(threat_score, 100)
+    payload["infra_type"] = "Tor Relay" if is_tor else ("Cloud Hosting" if is_cloud else "Standard ISP")
 
-    default_payload["is_public"] = True
-    return default_payload
+    return payload
 
 def enrich_hop_chain(hops: list) -> list:
     """Iterates through extracted hops and enriches public IPs with Geo/ASN data."""
