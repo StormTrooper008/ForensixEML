@@ -95,7 +95,8 @@ def render_upload():
                 auth = run_protocol_checks(sender, orig_ip, raw_bytes=f_bytes)
                 decomp["hops"] = enrich_hop_chain(decomp["hops"])
                 geo = get_ip_geolocation(orig_ip)
-                heur = scan_body_heuristics(decomp.get("body_preview", ""))
+                # --- UPDATE THIS LINE ---
+                heur = scan_body_heuristics(decomp.get("body_preview", ""), decomp.get("body_html", ""))
 
                 # --- NEW: Run Ledger Cross-Reference ---
                 intel = check_ledger_intelligence(sender, orig_ip, heur.get("urls", []))
@@ -108,6 +109,10 @@ def render_upload():
                 if geo.get("threat_score", 0) > 40: risk += 25
                 risk += heur["score"]
                 risk += intel["penalty"]  # <-- Add the new ledger penalty
+                
+                # --- NEW: Cap the absolute maximum risk score at 100 ---
+                risk = min(risk, 100)
+                # -------------------------------------------------------
                 
                 status_label = "🔴 Malicious" if risk >= 75 else ("🟡 Suspicious" if risk >= 45 else "🟢 Safe")
 

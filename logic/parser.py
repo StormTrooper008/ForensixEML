@@ -1,5 +1,6 @@
 import email
 from email import policy
+from email.utils import getaddresses
 from email.message import EmailMessage  # <-- Add this explicit import
 import ipaddress
 import dkim
@@ -60,6 +61,18 @@ def extract_plain_text(msg: EmailMessage) -> str:
 
     return "\n".join(text_content).strip()
 
+def extract_html_content(msg: EmailMessage) -> str:
+    """Extracts raw HTML payload if present."""
+    html_parts = []
+    for part in msg.walk():
+        if part.get_content_type() == "text/html":
+            try:
+                content = part.get_content()
+                if content:
+                    html_parts.append(str(content))
+            except Exception:
+                continue
+    return "\n".join(html_parts).strip()
 
 def parse_step1_headers(eml_bytes: bytes) -> Dict[str, Any]:
     """Core function for Step 1: Takes raw email bytes and performs complete decomposition."""
@@ -72,6 +85,24 @@ def parse_step1_headers(eml_bytes: bytes) -> Dict[str, Any]:
     subject = msg.get("Subject", "(No Subject)")
     date = msg.get("Date", "None")
     message_id = msg.get("Message-ID", "None")
+    # Extract recipient lists
+    to_header = msg.get("To", "")
+    cc_header = msg.get("Cc", "")
+    bcc_header = msg.get("Bcc", "")
+
+    recipients = []
+    for name, addr in getaddresses([to_header]):
+        if addr:
+            display_name = name.strip() if name.strip() else "Unknown / Not Provided"
+            recipients.append({"name": display_name, "email": addr.lower(), "type": "TO"})
+    for name, addr in getaddresses([cc_header]):
+        if addr:
+            display_name = name.strip() if name.strip() else "Unknown / Not Provided"
+            recipients.append({"name": display_name, "email": addr.lower(), "type": "CC"})
+    for name, addr in getaddresses([bcc_header]):
+        if addr:
+            display_name = name.strip() if name.strip() else "Unknown / Not Provided"
+            recipients.append({"name": display_name, "email": addr.lower(), "type": "BCC"})
 
     # 2. Extract and Order Hops Chronologically (Bottom to Top)
     raw_received = msg.get_all("Received", [])
@@ -111,7 +142,9 @@ def parse_step1_headers(eml_bytes: bytes) -> Dict[str, Any]:
         hops.append(hop_details)
 
     # 3. Message Body
+    # 3. Message Body
     body_text = extract_plain_text(msg)
+    body_html = extract_html_content(msg) # <-- Add this line
 
     return {
         "headers": {
@@ -119,14 +152,19 @@ def parse_step1_headers(eml_bytes: bytes) -> Dict[str, Any]:
             "From": from_header,
             "Return-Path": return_path,
             "Reply-To": reply_to,
+            "To": to_header,
+            "Cc": cc_header,
             "Date": date,
             "Message-ID": message_id,
         },
+        "recipients": recipients,
+        "recipient_count": len(recipients),
         "hops": hops,
         "total_hops": len(hops),
         "origin_candidate": origin_candidate
         or {"ip": "Unknown", "scope": "NONE", "label": "No IP extracted"},
-        "body_full": body_text,  # <-- ADD THIS NEW LINE
+        "body_full": body_text,
+        "body_html": body_html, # <-- Add this line to the return dict
         "body_preview": (
             body_text[:180] + "..." if len(body_text) > 180 else body_text
         ),

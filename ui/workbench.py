@@ -2,6 +2,7 @@ import streamlit as st
 import folium
 from streamlit_folium import st_folium
 from logic.export import generate_case_pdf
+import pandas as pd
 
 def render_workbench():
     st.markdown("<h2>Active Evidence Workbench</h2>", unsafe_allow_html=True)
@@ -46,6 +47,22 @@ def render_workbench():
 
     with t1:
         st.json(data["decomp"]["headers"])
+        
+        # --- NEW: Target Scope / Blast Radius ---
+        st.divider()
+        st.subheader("🎯 Target Distribution (Blast Radius)")
+        recipient_list = data["decomp"].get("recipients", [])
+        if recipient_list:
+            st.write(f"**Total Identified Targets:** `{len(recipient_list)}`")
+            st.dataframe(
+                pd.DataFrame(recipient_list),
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.info("No standard To/Cc/Bcc recipient headers found in message envelope.")
+        st.divider()
+        # ----------------------------------------
         
         # 1. Create a unique toggle key tied to the currently selected case
         toggle_key = f"expand_body_{selected_case}"
@@ -129,6 +146,15 @@ def render_workbench():
         st.code("\n".join(heur_data.get("urls", [])) if heur_data.get("urls") else "None detected", language="text")
         st.write("**Social Engineering Trigger Keywords:**")
         st.code(", ".join(heur_data.get("keywords", [])) if heur_data.get("keywords") else "None detected", language="text")
+
+        st.divider()
+        st.write("**🎣 Bait & Switch Link Mismatches:**")
+        mismatches = heur_data.get("link_mismatches", [])
+        if mismatches:
+            for mismatch in mismatches:
+                st.error(f"🚨 **Deceptive Link!**\n\n**Visible Text:** `{mismatch['claimed']}`\n\n**Hidden Destination:** `{mismatch['actual']}`")
+        else:
+            st.success("✅ No deceptive hyperlink mismatches detected.")
 
 
     st.divider()

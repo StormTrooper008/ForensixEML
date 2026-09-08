@@ -38,6 +38,9 @@ def generate_case_pdf(case_data: Dict[str, Any]) -> bytes:
     auth = case_data.get("auth", {})
     pdf.cell(0, 8, clean_text(f"SPF Record: {auth.get('spf', {}).get('status', 'N/A')}"), new_x="LMARGIN", new_y="NEXT")
     pdf.cell(0, 8, clean_text(f"DMARC Policy: {auth.get('dmarc', {}).get('policy', 'N/A')}"), new_x="LMARGIN", new_y="NEXT")
+
+    dkim_status = auth.get('dkim', {}).get('status', 'N/A')
+    pdf.cell(0, 8, clean_text(f"DKIM Signature: {dkim_status}"), new_x="LMARGIN", new_y="NEXT")
     
     geo = case_data.get("geo", {})
     pdf.cell(0, 8, clean_text(f"Origin Source IP: {geo.get('ip', 'Unknown')} ({geo.get('country', 'Unknown')})"), new_x="LMARGIN", new_y="NEXT")

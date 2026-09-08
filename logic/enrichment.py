@@ -1,7 +1,6 @@
 import ipaddress
 import requests
-from typing import Dict, Any, Optional
-
+from typing import Dict, Any, List
 
 def is_public_ip(ip_str: str) -> bool:
     """Verifies whether an IP is globally routable over the public internet."""
@@ -11,9 +10,8 @@ def is_public_ip(ip_str: str) -> bool:
     except ValueError:
         return False
 
-
 def get_ip_geolocation(ip_str: str) -> Dict[str, Any]:
-    """Resolves coordinates, country, city, and ISP for a public IP address."""
+    """Resolves coordinates, ASN, infrastructure type (Cloud/Tor)."""
     default_payload = {
         "ip": ip_str,
         "country": "Unknown / Internal",
@@ -23,6 +21,10 @@ def get_ip_geolocation(ip_str: str) -> Dict[str, Any]:
         "lon": 0.0,
         "isp": "Local Area Network / Unrouted",
         "org": "N/A",
+        "asn": "N/A",
+        "infra_type": "Internal / Private",
+        "is_tor": False,
+        "is_cloud": False,
         "threat_score": 0,
         "is_public": False,
     }
@@ -31,18 +33,34 @@ def get_ip_geolocation(ip_str: str) -> Dict[str, Any]:
         return default_payload
 
     try:
-        # Query free GeoIP lookup endpoint (rate-limited, no API key needed for testing)
-        url = f"http://ip-api.com/json/{ip_str}?fields=status,message,country,countryCode,city,lat,lon,isp,org,as,query"
+        # Added hosting and proxy fields to the API query
+        url = f"http://ip-api.com/json/{ip_str}?fields=status,message,country,countryCode,city,lat,lon,isp,org,as,hosting,proxy"
         response = requests.get(url, timeout=4)
+        
         if response.status_code == 200:
             data = response.json()
             if data.get("status") == "success":
-                # Basic heuristic threat weighting based on bulletproof hosters / known high-risk ASNs
-                isp_lower = (data.get("isp") or "").lower()
-                org_lower = (data.get("org") or "").lower()
-                threat_score = 15
-                if any(k in isp_lower or k in org_lower for k in ["tor", "vpn", "mullvad", "digitalocean", "linode", "ovh"]):
-                    threat_score = 65
+                isp = data.get("isp") or ""
+                org = data.get("org") or ""
+                asn = data.get("as") or "Unknown ASN"
+                check_str = f"{isp} {org} {asn}".lower()
+
+                # Cloud / Data Center Hosting Detection
+                cloud_keywords = ["digitalocean", "linode", "ovh", "hetzner", "amazon", "aws", "google", "azure"]
+                is_cloud = bool(data.get("hosting")) or any(k in check_str for k in cloud_keywords)
+
+                # Tor / Proxy Detection
+                tor_keywords = ["tor exit", "tor-exit", "relayon", "mullvad", "vpn"]
+                is_tor = bool(data.get("proxy")) or any(k in check_str for k in tor_keywords)
+
+                # Threat Score Calibration
+                threat_score = 10
+                if is_cloud:
+                    threat_score += 35
+                if is_tor:
+                    threat_score += 60
+
+                infra_type = "Tor Relay" if is_tor else ("Cloud Hosting" if is_cloud else "Standard ISP")
 
                 return {
                     "ip": ip_str,
@@ -51,9 +69,13 @@ def get_ip_geolocation(ip_str: str) -> Dict[str, Any]:
                     "city": data.get("city", "Unknown"),
                     "lat": float(data.get("lat", 0.0)),
                     "lon": float(data.get("lon", 0.0)),
-                    "isp": data.get("isp", "Unknown ISP"),
-                    "org": data.get("org", "Unknown Org"),
-                    "threat_score": threat_score,
+                    "isp": isp or "Unknown ISP",
+                    "org": org or "Unknown Org",
+                    "asn": asn,
+                    "infra_type": infra_type,
+                    "is_tor": is_tor,
+                    "is_cloud": is_cloud,
+                    "threat_score": min(threat_score, 100),
                     "is_public": True,
                 }
     except Exception:
@@ -62,9 +84,8 @@ def get_ip_geolocation(ip_str: str) -> Dict[str, Any]:
     default_payload["is_public"] = True
     return default_payload
 
-
 def enrich_hop_chain(hops: list) -> list:
-    """Iterates through extracted hops and enriches any public IPs found with GeoIP data."""
+    """Iterates through extracted hops and enriches public IPs with Geo/ASN data."""
     enriched_hops = []
     for hop in hops:
         hop_copy = dict(hop)
