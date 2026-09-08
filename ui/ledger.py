@@ -6,6 +6,7 @@ from ui.ledger_modules.tab_personnel import render_tab_personnel
 from ui.ledger_modules.tab_blocklist import render_tab_blocklist
 from ui.ledger_modules.tab_manage import render_tab_manage
 from ui.ledger_modules.tab_diagnostics import render_tab_diagnostics
+from ui.ledger_modules.tab_rejected import render_tab_rejected
 
 def render_ledger():
     if "ledger_subview" not in st.session_state:
@@ -37,6 +38,8 @@ def render_ledger():
             render_tab_diagnostics(conn)
         elif st.session_state.ledger_subview == "manage":
             render_tab_manage(conn)
+        elif st.session_state.ledger_subview == "rejected":
+            render_tab_rejected(conn)
 
     else:
         # --- MAIN LEDGER MENU HUB ---
@@ -96,9 +99,12 @@ def render_ledger():
                 st.session_state.ledger_subview = "diagnostics"
                 st.rerun()
         
-        # --- (End of the existing Row 3 code) ---
         with r3_c2:
-            st.empty()
+            st.markdown("### 🗑️ Rejected Files")
+            st.markdown("Audit trail of malformed or corrupted emails blocked during ingestion.")
+            if st.button("Open Rejected Files", use_container_width=True, type="primary"):
+                st.session_state.ledger_subview = "rejected"
+                st.rerun()
 
     # --- UNIVERSAL FOOTER ---
     st.divider()

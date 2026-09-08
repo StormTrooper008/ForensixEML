@@ -88,6 +88,17 @@ def init_db():
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS rejected_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_name TEXT,
+            sha256 TEXT UNIQUE,
+            rejection_reason TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
+
     conn.commit()
     conn.close()
 

@@ -22,8 +22,11 @@ def render_workbench():
     selected_case = st.selectbox(
         "Select Active Case:", 
         case_keys, 
-        index=default_idx
+        index=default_idx,
+        # --- NEW: Formats the dropdown to show "Filename | Risk Score (Case ID)" ---
+        format_func=lambda cid: f"{st.session_state.analyzed_store[cid]['file_name']} | Risk: {st.session_state.analyzed_store[cid]['risk_score']} ({cid})"
     )
+    
     st.session_state.selected_case = selected_case
     data = st.session_state.analyzed_store[selected_case]
     # ---------------------------------------------
@@ -42,6 +45,12 @@ def render_workbench():
             use_container_width=True
         )
     # ------------------------------------------------
+
+    # --- NEW: AI EXECUTIVE BRIEFING ---
+    ai_summary_text = data.get("ai_insight", "No summary available for this case.")
+    st.info(f"**🧠 AI Executive Summary:**\n\n{ai_summary_text}")
+    st.divider()
+    # ----------------------------------
 
     t1, t2, t3, t4 = st.tabs(["Headers & Body", "Authentication", "Geo Map", "Threat Intel"])
 
@@ -101,20 +110,80 @@ def render_workbench():
         st.json(data["auth"])
         
     with t3:
-        st.write(f"**Origin IP:** `{data['geo'].get('ip')}` | **Country:** {data['geo'].get('country')}")
-        if data["geo"].get("lat") and data["geo"].get("lon"):
-            # Initialize map centered on the IP's coordinates
-            m = folium.Map(location=[data["geo"]["lat"], data["geo"]["lon"]], zoom_start=3)
-            folium.Marker(
-                [data["geo"]["lat"], data["geo"]["lon"]], 
-                popup=f"Origin: {data['geo'].get('ip')}",
-                icon=folium.Icon(color="red", icon="info-sign")
-            ).add_to(m)
+        origin_ip = data["geo"].get("ip", "Unknown")
+        origin_country = data["geo"].get("country", "Unknown")
+        
+        # Extract Provider / ASN / Organization attribution
+        provider_name = (
+            data["geo"].get("org") 
+            or data["geo"].get("isp") 
+            or data["geo"].get("as") 
+            or "Local / Private Infrastructure"
+        )
+        asn_record = data["geo"].get("as", "N/A")
+
+        st.write(f"**Origin IP:** `{origin_ip}` | **Country:** {origin_country}")
+        st.info(f"🏢 **Originated From Infrastructure:** `{provider_name}` | **ASN:** `{asn_record}`")
+
+        route_coords = []
+        has_origin_coords = bool(data["geo"].get("lat") and data["geo"].get("lon"))
+
+        # 1. Collect all valid relay hop coordinates
+        hop_markers = []
+        for hop_idx, hop in enumerate(data["decomp"].get("hops", [])):
+            for ip_data in hop.get("extracted_ips", []):
+                geo = ip_data.get("geo", {})
+                if geo.get("lat") and geo.get("lon"):
+                    coords = [geo["lat"], geo["lon"]]
+                    route_coords.append(coords)
+                    hop_provider = geo.get("org") or geo.get("isp") or "Unknown Provider"
+                    hop_markers.append({
+                        "coords": coords,
+                        "label": f"Hop {hop_idx + 1}: {geo.get('ip', 'Unknown')} ({geo.get('country', 'Unknown')}) | {hop_provider}"
+                    })
+
+        # 2. Append origin coordinates at the end of the route
+        if has_origin_coords:
+            origin_coords = [data["geo"]["lat"], data["geo"]["lon"]]
+            route_coords.append(origin_coords)
+        else:
+            st.warning(f"⚠️ No public geographic coordinates resolved for Origin IP `{origin_ip}` (likely private/internal network infrastructure).")
+
+        # 3. Render map or fallback warning
+        if route_coords:
+            map_center = [data["geo"]["lat"], data["geo"]["lon"]] if has_origin_coords else route_coords[0]
+            m = folium.Map(location=map_center, zoom_start=2)
+
+            # Plot intermediate transit hops (Blue)
+            for marker in hop_markers:
+                folium.Marker(
+                    marker["coords"],
+                    popup=marker["label"],
+                    icon=folium.Icon(color="blue", icon="cloud")
+                ).add_to(m)
+
+            # Plot true origin (Red)
+            if has_origin_coords:
+                folium.Marker(
+                    [data["geo"]["lat"], data["geo"]["lon"]],
+                    popup=f"Origin: {origin_ip} ({origin_country}) | {provider_name}",
+                    icon=folium.Icon(color="red", icon="info-sign")
+                ).add_to(m)
+
+            # Draw directional transit path if multiple nodes exist
+            if len(route_coords) > 1:
+                folium.PolyLine(
+                    route_coords,
+                    color="red",
+                    weight=2.5,
+                    opacity=0.8,
+                    dash_array="5, 5"
+                ).add_to(m)
+
             st_folium(m, width=800, height=400)
         else:
-            st.warning("Valid geographical coordinates not found for this IP.")
+            st.warning("Valid geographical coordinates not found for this IP or intermediate mail hops.")
 
-            
     with t4:
         # Load data
         heur_data = data.get("heur", {})

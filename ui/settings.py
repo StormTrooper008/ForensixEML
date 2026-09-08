@@ -24,6 +24,16 @@ def render_settings():
     
     st.divider()
     
+    # --- AI ENGINE CONFIGURATION ---
+    st.subheader("🧠 AI Threat Synthesis")
+    st.caption("Enter your Gemini API key to enable automated incident reporting.")
+    api_key_input = st.text_input("Gemini API Key", value=st.session_state.get("gemini_api_key", ""), type="password")
+    if api_key_input != st.session_state.get("gemini_api_key"):
+        st.session_state.gemini_api_key = api_key_input
+        st.rerun()
+
+    st.divider()
+    
     # --- NATIVE THEME INSTRUCTIONS ---
     st.subheader("🎨 Interface Theme")
     st.info("""
@@ -50,7 +60,6 @@ def render_settings():
                 st.rerun()
         else:
             st.session_state.dev_mode = False
-            # UPGRADED ADIOS LOGIC: Destroys ALL legacy and current simulated crashes
             try:
                 conn = get_db_connection()
                 conn.execute("DELETE FROM crash_logs WHERE user = 'Dev_Testing' OR error_message LIKE '%Simulated%'")

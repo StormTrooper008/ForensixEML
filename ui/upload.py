@@ -6,6 +6,7 @@ import json
 import email
 from email import policy
 
+from logic.ai_agent import generate_incident_summary
 from logic.parser import parse_step1_headers
 from logic.auth import run_protocol_checks
 from logic.enrichment import get_ip_geolocation, enrich_hop_chain
@@ -40,6 +41,18 @@ def validate_rfc_structure(file_bytes: bytes) -> tuple[bool, str]:
 
     return True, "Valid"
 
+
+@st.dialog("⚠️ Ingestion Failures Detected")
+def show_error_popup(errors_list):
+    st.error("Some files were rejected by the strict RFC validation engine.")
+    for err in errors_list:
+        st.write(f"- {err}")
+    st.info("Full details have been recorded in the Rejected Files Ledger.")
+    # When acknowledged, it will reload the page (and navigate to workbench if valid files existed)
+    if st.button("Acknowledge"):
+        st.rerun()
+
+
 def render_upload():
     st.markdown("<h2>Forensic Ingestion Engine</h2>", unsafe_allow_html=True)
     st.caption("Strictly accepts RFC 822 / RFC 5322 compliant .eml files. Malformed files are rejected before processing.")
@@ -65,24 +78,28 @@ def render_upload():
             
             try:
                 f_bytes = uf.read()
+                f_hash = hashlib.sha256(f_bytes).hexdigest()
                 
-                # 1. Strict Sandbox Validation
+                # 1. Check if already rejected
+                cursor.execute("SELECT id FROM rejected_files WHERE sha256 = ?", (f_hash,))
+                if cursor.fetchone():
+                    errors.append(f"❌ **Blocked '{uf.name}'**: Duplicate (Already in Rejected Ledger).")
+                    continue
+                
+                # 2. Strict Sandbox Validation
                 is_valid, reason = validate_rfc_structure(f_bytes)
                 if not is_valid:
+                    cursor.execute("INSERT INTO rejected_files (file_name, sha256, rejection_reason) VALUES (?, ?, ?)", (uf.name, f_hash, reason))
                     errors.append(f"❌ **Blocked '{uf.name}'**: {reason}")
                     continue
 
-                f_hash = hashlib.sha256(f_bytes).hexdigest()
-
-                # 2. Duplicate Detection (Modified)
+                # 2. Duplicate Detection
                 cursor.execute("SELECT case_id FROM cases WHERE sha256 = ?", (f_hash,))
                 existing = cursor.fetchone()
                 
                 if existing:
-                    # Use the historical Case ID, but KEEP GOING so it loads into the session
                     case_id = existing["case_id"]
                 else:
-                    # Generate a new Case ID for new files
                     case_id = f"CASE-{hashlib.md5(f_bytes).hexdigest()[:6].upper()}"
 
                 # 3. Pipeline Decomposition
@@ -91,87 +108,84 @@ def render_upload():
                 orig_ip = decomp["origin_candidate"].get("ip", "")
                 subject = decomp["headers"].get("Subject", "(No Subject)")
 
-                # Pass raw bytes so DKIM can verify cryptographic signatures
                 auth = run_protocol_checks(sender, orig_ip, raw_bytes=f_bytes)
                 decomp["hops"] = enrich_hop_chain(decomp["hops"])
                 geo = get_ip_geolocation(orig_ip)
-                # --- UPDATE THIS LINE ---
                 heur = scan_body_heuristics(decomp.get("body_preview", ""), decomp.get("body_html", ""))
-
-                # --- NEW: Run Ledger Cross-Reference ---
                 intel = check_ledger_intelligence(sender, orig_ip, heur.get("urls", []))
 
-                # 4. Risk Evaluation (Updated with Intel Penalty)
+                # 4. Baseline Risk Evaluation 
                 risk = 10
                 if auth.get("dkim", {}).get("status") in ["FAIL / MISSING", "ERROR"]: risk += 20
                 if auth["spf"]["status"] == "FAIL": risk += 35
                 if auth["dmarc"]["policy"] in ["NONE", "MISSING"]: risk += 10
                 if geo.get("threat_score", 0) > 40: risk += 25
                 risk += heur["score"]
-                risk += intel["penalty"]  # <-- Add the new ledger penalty
-                
-                # --- NEW: Cap the absolute maximum risk score at 100 ---
+                risk += intel["penalty"]
                 risk = min(risk, 100)
-                # -------------------------------------------------------
-                
-                status_label = "🔴 Malicious" if risk >= 75 else ("🟡 Suspicious" if risk >= 45 else "🟢 Safe")
 
-
-                # 5. Database Insertion OR Update
-                # Package the full telemetry into a JSON string
+                # 5. AI Threat Synthesis
                 telemetry_package = {
-                    "decomp": decomp, "auth": auth, "geo": geo, "heur": heur, "intel": intel
+                    "decomp": decomp, "auth": auth, "geo": geo, "heur": heur, "intel": intel, "risk_score": risk
                 }
+                
+                api_key = st.session_state.get("gemini_api_key", "")
+                ai_results = generate_incident_summary(telemetry_package, api_key)
+                
+                final_risk = ai_results.get("ai_score", risk)
+                status_label = "🔴 Malicious" if final_risk >= 75 else ("🟡 Suspicious" if final_risk >= 45 else "🟢 Safe")
+
+                telemetry_package["ai_insight"] = ai_results.get("ai_summary", "No summary generated.")
                 telemetry_str = json.dumps(telemetry_package)
 
+                # 6. Database Insertion OR Update
                 if not existing:
-                    # New files get both timestamp and last_analyzed automatically set via SQLite defaults
                     cursor.execute("""
                         INSERT INTO cases (case_id, file_name, sha256, sender, subject, origin_ip, risk_score, status, telemetry)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (case_id, uf.name, f_hash, sender, subject, orig_ip, risk, status_label, telemetry_str))
+                    """, (case_id, uf.name, f_hash, sender, subject, orig_ip, final_risk, status_label, telemetry_str))
                 else:
-                    # OVERWRITE the intelligence score and UPDATE last_analyzed, but PRESERVE original timestamp
                     cursor.execute("""
                         UPDATE cases 
                         SET risk_score = ?, status = ?, telemetry = ?, last_analyzed = CURRENT_TIMESTAMP
                         WHERE case_id = ?
-                    """, (risk, status_label, telemetry_str, case_id))
+                    """, (final_risk, status_label, telemetry_str, case_id))
                     
-                # 6. Save into session memory for active workbench
+                # 7. Save into session memory
                 st.session_state.analyzed_store[case_id] = {
                     "case_id": case_id,
                     "file_name": uf.name, 
                     "hash": f_hash, 
                     "status": status_label,
-                    "risk_score": risk,
+                    "risk_score": final_risk,
                     "decomp": decomp, 
                     "auth": auth, 
                     "geo": geo, 
                     "heur": heur,
-                    "intel": intel
+                    "intel": intel,
+                    "ai_insight": telemetry_package["ai_insight"] 
                 }
                 success_cases.append(case_id)
 
             except Exception as e:
+                # Also log fatal processing errors to the ledger
+                cursor.execute("INSERT INTO rejected_files (file_name, rejection_reason) VALUES (?, ?)", (uf.name, f"Fatal Processing Error: {str(e)}"))
                 errors.append(f"💥 **Fatal Error on '{uf.name}'**: {str(e)}")
 
-        # Commit only validated cases
+        # Commit everything to database
         conn.commit()
         conn.close()
         progress_bar.empty()
 
-        # Display Errors (if any files were corrupt)
-        if errors:
-            for err in errors:
-                st.markdown(err)
-
-# Handle Successful Upload & Automatic Redirect
+        # --- FIX: Proper Redirect and Popup Handling ---
+        # If there are successes, queue the redirect in session state first
         if success_cases:
             st.session_state.selected_case = success_cases[-1]
-            
-            # Update the central state variable
             st.session_state.current_page = "🔬 Investigation Workbench"
-            
-            # Instantly trigger the page reload
+
+        # If there are errors, show the blocking modal. (When they click acknowledge, it will rerun and follow the redirect).
+        if errors:
+            show_error_popup(errors)
+        # If no errors but there are successes, redirect instantly.
+        elif success_cases:
             st.rerun()
