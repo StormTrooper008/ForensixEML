@@ -1,6 +1,7 @@
-# --- app.py ---
+# app.py
 import streamlit as st
 
+from ui.login import render_login
 from ui.dashboard import render_dashboard
 from ui.upload import render_upload
 from ui.workbench import render_workbench
@@ -8,7 +9,6 @@ from ui.ledger import render_ledger
 from ui.settings import render_settings
 
 st.set_page_config(page_title="Email Forensics Platform", page_icon="💾", layout="wide")
-
 
 st.markdown("""
     <style>
@@ -18,21 +18,21 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Global Session State
 # --- Global Session State ---
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
+if "user_role" not in st.session_state:
+    st.session_state.user_role = None
 if "analyzed_store" not in st.session_state:
     st.session_state.analyzed_store = {}
 if "current_page" not in st.session_state:
     st.session_state.current_page = "🏠 Main Dashboard"
 if "selected_case" not in st.session_state:
     st.session_state.selected_case = None
-if "tz_pref" not in st.session_state:               # <-- timezone
-    st.session_state.tz_pref = "UTC"                # <-- timezone
+if "tz_pref" not in st.session_state:
+    st.session_state.tz_pref = "UTC"
 
 # --- GLOBAL UI CONCEALMENT ---
-    # This ensures the hamburger menu stays hidden across ALL pages if Dev Mode is off
 if not st.session_state.get("dev_mode", False):
     st.markdown("""
         <style>
@@ -40,51 +40,49 @@ if not st.session_state.get("dev_mode", False):
             [data-testid="stToolbar"] {visibility: hidden;}
         </style>
     """, unsafe_allow_html=True)
-    #-----------------------------
 
-def login():
-    st.markdown("<h2>Email Forensics Platform Login</h2>", unsafe_allow_html=True)
-    with st.form("login_form"):
-        username = st.text_input("Analyst ID")
-        password = st.text_input("Passphrase", type="password")
-        submit = st.form_submit_button("Authenticate")
-        
-        if submit and username == "admin" and password == "sih2026":
-            st.session_state.logged_in = True
-            st.session_state.user = username
-            st.rerun()
-        elif submit:
-            st.error("Invalid credentials.")
-
+# --- Routing Engine ---
 if not st.session_state.logged_in:
-    login()
+    render_login()
 else:
-    nav_options = [
-        "🏠 Main Dashboard", 
-        "📂 Upload & Ingest", 
-        "🔬 Investigation Workbench", 
-        "🗄️ Database Ledger",
-        "⚙️ Settings & User"
-    ]
+    if st.session_state.user_role == "Analyst":
+        nav_options = [
+            "🏠 Main Dashboard", 
+            "📂 Upload & Ingest", 
+            "🔬 Investigation Workbench", 
+            "🗄️ Database Ledger",
+            "⚙️ Settings & User"
+        ]
+    else:
+        # Scoped Employee Portal View
+        nav_options = [
+            "🏠 Main Dashboard",
+            "⚙️ Settings & User"
+        ]
 
     with st.sidebar:
-        st.markdown("## 💾 **Email Forensics**")
+        st.markdown(f"## 💾 **Email Forensics**")
+        st.caption(f"Logged in as: `{st.session_state.get('user', 'Unknown')}` ({st.session_state.user_role})")
+        if st.button("🚪 Log Out"):
+            st.session_state.logged_in = False
+            st.session_state.user_role = None
+            st.session_state.user = None
+            st.rerun()
         st.divider()
         
-        # Calculate the current index based on session state
-        active_index = nav_options.index(st.session_state.current_page) if st.session_state.current_page in nav_options else 0
+        if st.session_state.current_page not in nav_options:
+            st.session_state.current_page = nav_options[0]
+
+        active_index = nav_options.index(st.session_state.current_page)
         
-        # Draw the radio button WITHOUT a key, relying only on index
         selected_page = st.radio(
             "Navigation Engine", 
             nav_options,
             index=active_index
         )
-        
-        # Keep session state updated if the user clicks a new option
         st.session_state.current_page = selected_page
 
-    # Route according to the active page
+    # Route according to active page
     if st.session_state.current_page == "🏠 Main Dashboard":
         render_dashboard()
     elif st.session_state.current_page == "📂 Upload & Ingest":
