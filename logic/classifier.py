@@ -55,8 +55,13 @@ class LocalPhishingClassifier:
             print(f"Inference error: {e}")
             return {"confidence": 0.0, "label": "ERROR"}
 
-# Global singleton instance so it only loads once when the app starts
-classifier = LocalPhishingClassifier()
+# --- Replace the bottom of logic/classifier.py with this ---
+import streamlit as st
+
+# Cache the model so Streamlit doesn't freeze on reload
+@st.cache_resource(show_spinner="Loading DistilBERT Threat Gate...")
+def get_classifier():
+    return LocalPhishingClassifier()
 
 def run_local_classifier(text_content: str) -> dict:
-    return classifier.predict(text_content)
+    return get_classifier().predict(text_content)

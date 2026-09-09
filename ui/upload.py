@@ -137,26 +137,23 @@ def render_upload():
                 # A. Run Primary Local Model (DistilBERT)
                 email_full_text = decomp.get("body_full", "") + " " + decomp["headers"].get("Subject", "")
                 local_ai_result = run_local_classifier(email_full_text)
+                
+                # Blend DistilBERT's probability with our forensic heuristics
                 local_score = local_ai_result.get("phishing_probability", risk)
+                final_risk = int((risk + local_score) / 2)
                 
-                # Blend local score into baseline risk
-                risk = int((risk + local_score) / 2)
-                
-                # B. Run Secondary Explainer (Gemini / Qwen Backup)
-                # Only call cloud API if local confidence is high or for complex cases to save rate limits
-                api_key = st.session_state.get("gemini_api_key", "")
+                # B. Run Secondary Explainer (Qwen 1.5B) - GATED FOR SPEED
                 telemetry_package = {
-                    "decomp": decomp, "auth": auth, "geo": geo, "heur": heur, "intel": intel, "risk_score": risk, "local_ai": local_ai_result
+                    "decomp": decomp, "auth": auth, "geo": geo, "heur": heur, "intel": intel, "risk_score": final_risk, "local_ai": local_ai_result
                 }
                 
-                if api_key:
-                    ai_results = generate_incident_summary(telemetry_package, api_key)
-                    final_risk = ai_results.get("ai_score", risk)
+                if final_risk >= 40:
+                    # Email is dangerous. Wake up Qwen for a deep explanation.
+                    ai_results = generate_incident_summary(telemetry_package)
                     ai_summary_text = ai_results.get("ai_summary", "No summary generated.")
                 else:
-                    # Air-gapped fallback using local telemetry explanation
-                    final_risk = risk
-                    ai_summary_text = f"🛡️ [Air-Gapped Mode] DistilBERT Classification Confidence: {local_score}% malicious indicator weight."
+                    # Email is safe. Skip Qwen to process in milliseconds.
+                    ai_summary_text = "🟢 [Automated Clearance] Baseline heuristics and DistilBERT scored this email as benign. Deep LLM narrative bypassed."
 
                 status_label = "🔴 Malicious" if final_risk >= 75 else ("🟡 Suspicious" if final_risk >= 45 else "🟢 Safe")
                 telemetry_package["ai_insight"] = ai_summary_text
