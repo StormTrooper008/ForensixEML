@@ -26,7 +26,7 @@ def download_all_models():
     print("=" * 60)
     
     # 1. Storage Warning & Confirmation Prompt
-    print("⚠️  STORAGE WARNING: This process will download approximately 3.5 GB of neural network weights to your local machine.")
+    print("⚠️  STORAGE WARNING: This process will download approximately 5 GB of neural network weights to your local machine.")
     print("This ensures 100% air-gapped, offline operation for the threat detection platform.\n")
     
     choice = input("Do you have enough disk space and wish to proceed? (y/n): ").strip().lower()
