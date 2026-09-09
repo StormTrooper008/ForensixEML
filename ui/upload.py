@@ -115,11 +115,18 @@ def render_upload():
                 intel = check_ledger_intelligence(sender, orig_ip, heur.get("urls", []))
 
                 # 4. Baseline Risk Evaluation 
+                # 4. Baseline Risk Evaluation 
                 risk = 10
                 if auth.get("dkim", {}).get("status") in ["FAIL / MISSING", "ERROR"]: risk += 20
                 if auth["spf"]["status"] == "FAIL": risk += 35
                 if auth["dmarc"]["policy"] in ["NONE", "MISSING"]: risk += 10
                 if geo.get("threat_score", 0) > 40: risk += 25
+                
+                # --- NEW: Apply +50 Penalty for malicious file extensions ---
+                if decomp.get("has_risky_attachments"): 
+                    risk += 50
+                # ------------------------------------------------------------
+                
                 risk += heur["score"]
                 risk += intel["penalty"]
                 risk = min(risk, 100)
