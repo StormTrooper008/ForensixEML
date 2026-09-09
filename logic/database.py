@@ -23,6 +23,7 @@ def init_db():
             notes TEXT
         )
     """)
+    # ... existing cases table creation ...
     try: cursor.execute("ALTER TABLE cases ADD COLUMN telemetry TEXT")
     except sqlite3.OperationalError: pass
     try: 
@@ -31,6 +32,13 @@ def init_db():
     except sqlite3.OperationalError: pass
     try: cursor.execute("ALTER TABLE cases ADD COLUMN notes TEXT")
     except sqlite3.OperationalError: pass
+    
+    # --- NEW: Add ai_notes column to cases and rejected_files ---
+    try: cursor.execute("ALTER TABLE cases ADD COLUMN ai_notes TEXT")
+    except sqlite3.OperationalError: pass
+    try: cursor.execute("ALTER TABLE rejected_files ADD COLUMN ai_notes TEXT")
+    except sqlite3.OperationalError: pass
+    # ------------------------------------------------------------
 
     # 2. Personnel Table (Replaces Employees)
     cursor.execute("""

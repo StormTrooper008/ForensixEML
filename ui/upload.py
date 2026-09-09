@@ -13,6 +13,7 @@ from logic.enrichment import get_ip_geolocation, enrich_hop_chain
 from logic.heuristics import scan_body_heuristics
 from logic.database import get_db_connection
 from logic.intel import check_ledger_intelligence
+from logic.classifier import run_local_classifier
 
 def validate_rfc_structure(file_bytes: bytes) -> tuple[bool, str]:
     """Strictly validates RFC 5322 structure and mandatory email headers."""
@@ -131,32 +132,51 @@ def render_upload():
                 risk += intel["penalty"]
                 risk = min(risk, 100)
 
-                # 5. AI Threat Synthesis
+                # 5. AI Threat Synthesis (Dual-AI Ensemble)
+                
+                # A. Run Primary Local Model (DistilBERT)
+                email_full_text = decomp.get("body_full", "") + " " + decomp["headers"].get("Subject", "")
+                local_ai_result = run_local_classifier(email_full_text)
+                local_score = local_ai_result.get("phishing_probability", risk)
+                
+                # Blend local score into baseline risk
+                risk = int((risk + local_score) / 2)
+                
+                # B. Run Secondary Explainer (Gemini / Qwen Backup)
+                # Only call cloud API if local confidence is high or for complex cases to save rate limits
+                api_key = st.session_state.get("gemini_api_key", "")
                 telemetry_package = {
-                    "decomp": decomp, "auth": auth, "geo": geo, "heur": heur, "intel": intel, "risk_score": risk
+                    "decomp": decomp, "auth": auth, "geo": geo, "heur": heur, "intel": intel, "risk_score": risk, "local_ai": local_ai_result
                 }
                 
-                api_key = st.session_state.get("gemini_api_key", "")
-                ai_results = generate_incident_summary(telemetry_package, api_key)
-                
-                final_risk = ai_results.get("ai_score", risk)
-                status_label = "🔴 Malicious" if final_risk >= 75 else ("🟡 Suspicious" if final_risk >= 45 else "🟢 Safe")
+                if api_key:
+                    ai_results = generate_incident_summary(telemetry_package, api_key)
+                    final_risk = ai_results.get("ai_score", risk)
+                    ai_summary_text = ai_results.get("ai_summary", "No summary generated.")
+                else:
+                    # Air-gapped fallback using local telemetry explanation
+                    final_risk = risk
+                    ai_summary_text = f"🛡️ [Air-Gapped Mode] DistilBERT Classification Confidence: {local_score}% malicious indicator weight."
 
-                telemetry_package["ai_insight"] = ai_results.get("ai_summary", "No summary generated.")
+                status_label = "🔴 Malicious" if final_risk >= 75 else ("🟡 Suspicious" if final_risk >= 45 else "🟢 Safe")
+                telemetry_package["ai_insight"] = ai_summary_text
                 telemetry_str = json.dumps(telemetry_package)
 
                 # 6. Database Insertion OR Update
+                # Extract the AI string so we can save it in its own dedicated column
+                ai_notes_text = telemetry_package.get("ai_insight", "No summary generated.")
+                
                 if not existing:
                     cursor.execute("""
-                        INSERT INTO cases (case_id, file_name, sha256, sender, subject, origin_ip, risk_score, status, telemetry)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (case_id, uf.name, f_hash, sender, subject, orig_ip, final_risk, status_label, telemetry_str))
+                        INSERT INTO cases (case_id, file_name, sha256, sender, subject, origin_ip, risk_score, status, telemetry, ai_notes)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (case_id, uf.name, f_hash, sender, subject, orig_ip, final_risk, status_label, telemetry_str, ai_notes_text))
                 else:
                     cursor.execute("""
                         UPDATE cases 
-                        SET risk_score = ?, status = ?, telemetry = ?, last_analyzed = CURRENT_TIMESTAMP
+                        SET risk_score = ?, status = ?, telemetry = ?, ai_notes = ?, last_analyzed = CURRENT_TIMESTAMP
                         WHERE case_id = ?
-                    """, (final_risk, status_label, telemetry_str, case_id))
+                    """, (final_risk, status_label, telemetry_str, ai_notes_text, case_id))
                     
                 # 7. Save into session memory
                 st.session_state.analyzed_store[case_id] = {
