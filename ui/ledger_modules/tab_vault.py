@@ -9,12 +9,12 @@ def render_tab_vault(conn):
             SELECT status, risk_score, case_id, file_name, sender, origin_ip, 
             datetime(timestamp, 'localtime') as timestamp, 
             datetime(last_analyzed, 'localtime') as last_analyzed,
-            notes
+            notes, ai_notes
             FROM cases ORDER BY risk_score DESC
         """
     else:
         query = """
-            SELECT status, risk_score, case_id, file_name, sender, origin_ip, timestamp, last_analyzed, notes 
+            SELECT status, risk_score, case_id, file_name, sender, origin_ip, timestamp, last_analyzed, notes, ai_notes 
             FROM cases ORDER BY risk_score DESC
         """
         
@@ -44,7 +44,8 @@ def render_tab_vault(conn):
             selected_case = st.selectbox("Select Case ID to Load:", filtered_df["case_id"].tolist() if not filtered_df.empty else [])
             if selected_case and st.button("Load into Workbench", type="primary", use_container_width=True):
                 cursor = conn.cursor()
-                cursor.execute("SELECT file_name, sha256, status, risk_score, telemetry FROM cases WHERE case_id = ?", (selected_case,))
+                # Grab ai_notes from the database so it loads into the workbench properly
+                cursor.execute("SELECT file_name, sha256, status, risk_score, telemetry, ai_notes FROM cases WHERE case_id = ?", (selected_case,))
                 row = cursor.fetchone()
                 
                 if row and row["telemetry"]:
@@ -59,7 +60,8 @@ def render_tab_vault(conn):
                         "auth": tel.get("auth", {}),
                         "geo": tel.get("geo", {}),
                         "heur": tel.get("heur", {}),
-                        "intel": tel.get("intel", {})
+                        "intel": tel.get("intel", {}),
+                        "ai_insight": row["ai_notes"]
                     }
                     st.session_state.selected_case = selected_case
                     st.session_state.current_page = "🔬 Investigation Workbench"

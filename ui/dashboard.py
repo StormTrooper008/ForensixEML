@@ -37,12 +37,12 @@ def render_dashboard():
     # 4. Fetch Top 10 High-Risk Cases dynamically based on Timezone Pref
     if st.session_state.get("tz_pref") == "Local":
         query = """
-            SELECT status, risk_score, case_id, file_name, sender, datetime(timestamp, 'localtime') as timestamp 
+            SELECT status, risk_score, case_id, file_name, sender, ai_notes, datetime(timestamp, 'localtime') as timestamp 
             FROM cases ORDER BY risk_score DESC LIMIT 10
         """
     else:
         query = """
-            SELECT status, risk_score, case_id, file_name, sender, timestamp 
+            SELECT status, risk_score, case_id, file_name, sender, ai_notes, timestamp 
             FROM cases ORDER BY risk_score DESC LIMIT 10
         """
         

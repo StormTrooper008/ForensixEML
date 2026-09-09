@@ -1,6 +1,7 @@
 # app.py
 import streamlit as st
 
+from ui.correlation import render_correlation_view
 from ui.login import render_login
 from ui.dashboard import render_dashboard
 from ui.upload import render_upload
@@ -50,6 +51,7 @@ else:
             "🏠 Main Dashboard", 
             "📂 Upload & Ingest", 
             "🔬 Investigation Workbench", 
+            "🕸️ Threat Graph & Campaigns",  # <-- 1. ADDED HERE
             "🗄️ Database Ledger",
             "⚙️ Settings & User"
         ]
@@ -89,6 +91,8 @@ else:
         render_upload()
     elif st.session_state.current_page == "🔬 Investigation Workbench":
         render_workbench()
+    elif st.session_state.current_page == "🕸️ Threat Graph & Campaigns":  # <-- 2. ADDED HERE
+        render_correlation_view()
     elif st.session_state.current_page == "🗄️ Database Ledger":
         render_ledger()
     elif st.session_state.current_page == "⚙️ Settings & User":
