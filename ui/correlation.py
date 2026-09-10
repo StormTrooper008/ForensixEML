@@ -14,10 +14,14 @@ def render_interactive_graph(G: nx.Graph, height="500px", graph_key="main_graph"
     selected_node = st.session_state.get(f"selected_{graph_key}", None)
     
     # Determine the neighborhood of the clicked node
+    # Determine the neighborhood of the clicked node
     highlight_nodes = set()
     if selected_node and G.has_node(selected_node):
         highlight_nodes.add(selected_node)
         highlight_nodes.update(G.neighbors(selected_node))
+        
+        # Display a banner confirming what is selected
+        st.info(f"🎯 **Focus Mode:** Isolating connections for `{selected_node}`. Click the background to reset.")
 
     nodes = []
     edges = []
@@ -31,14 +35,20 @@ def render_interactive_graph(G: nx.Graph, height="500px", graph_key="main_graph"
         n_type = data.get("node_type", "CASE")
         base_color = color_map.get(n_type, "#abb2bf")
         
-        # Aggressive Dimming Logic
-        # Aggressive Blackout Logic
+        # --- THE NEW GHOSTING LOGIC ---
         if selected_node and node not in highlight_nodes:
-            color = "#0e1117"       # Blend perfectly into the background
-            font_color = "#0e1117"  # Hide text completely
-            size = 1                # Shrink to near-zero
+            # Unrelated Nodes: 95% transparent, invisible text, tiny size
+            node_color = "rgba(30, 34, 42, 0.05)" 
+            font_color = "rgba(0, 0, 0, 0)"      
+            size = 5                              
+        elif selected_node and node == selected_node:
+            # The Clicked Node: Massive size, bright text
+            node_color = base_color
+            font_color = "#ffffff"
+            size = 45
         else:
-            color = base_color
+            # Neighbors (or default unselected state)
+            node_color = base_color
             font_color = "#d8dee9"
             size = 25 if n_type == "CASE" else 15
             
@@ -50,17 +60,16 @@ def render_interactive_graph(G: nx.Graph, height="500px", graph_key="main_graph"
             id=node,
             label=str(data.get("label", node))[:15],
             size=size,
-            color=color,
+            color=node_color,
             title=title,
-            font={"color": font_color} # Applies the text hiding
+            font={"color": font_color}
         ))
         
     for u, v in G.edges():
-        # Hide edges completely if they aren't attached to the highlighted cluster
         if selected_node and (u not in highlight_nodes or v not in highlight_nodes):
-            edge_color = "rgba(0, 0, 0, 0)" # 100% Transparent
+            edge_color = "rgba(0, 0, 0, 0)" # Unrelated edges become 100% invisible
         else:
-            edge_color = "#5c6370" # Normal visible edge
+            edge_color = "#5c6370"
             
         edges.append(Edge(source=u, target=v, color=edge_color))
         
