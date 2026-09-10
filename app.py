@@ -5,15 +5,15 @@ from ui.correlation import render_correlation_view
 from ui.login import render_login
 from ui.dashboard import render_dashboard
 from ui.upload import render_upload
-from ui.workbench import render_workbench
 from ui.ledger import render_ledger
 from ui.settings import render_settings
 
+# --- Page Configuration ---
 st.set_page_config(
     page_title="Email Forensics Platform", 
     page_icon="💾", 
     layout="wide", 
-    initial_sidebar_state="expanded"  # <-- ADD THIS
+    initial_sidebar_state="expanded"
 )
 
 st.markdown("""
@@ -42,11 +42,8 @@ if "tz_pref" not in st.session_state:
 if st.session_state.get("dev_mode", False):
     st.markdown("""
         <style>
-            /* Hide the top-right menu and deploy button */
             [data-testid="stToolbar"] {visibility: hidden !important;}
             #MainMenu {visibility: hidden !important;}
-            
-            /* Force the sidebar expand/collapse button to ALWAYS remain visible */
             [data-testid="collapsedControl"] {
                 visibility: visible !important;
                 z-index: 9999 !important;
@@ -62,13 +59,11 @@ else:
         nav_options = [
             "🏠 Main Dashboard", 
             "📂 Upload & Ingest", 
-            "🔬 Investigation Workbench", 
-            "🕸️ Threat Graph & Campaigns",  # <-- 1. ADDED HERE
+            "🕸️ Threat Graph & Campaigns",
             "🗄️ Database Ledger",
             "⚙️ Settings & User"
         ]
     else:
-        # Scoped Employee Portal View
         nav_options = [
             "🏠 Main Dashboard",
             "⚙️ Settings & User"
@@ -90,7 +85,6 @@ else:
         if st.session_state.current_page not in nav_options:
             st.session_state.current_page = nav_options[0]
 
-        # Generate proper app-style buttons instead of a radio menu
         for page in nav_options:
             is_active = (st.session_state.current_page == page)
             if st.button(page, type="primary" if is_active else "secondary", use_container_width=True):
@@ -101,20 +95,17 @@ else:
         st.divider()
         st.caption("🟢 **System Status:** Online")
         
-        # Interactive Dev Mode Toggle (ADD THIS HERE)
         dev_mode_toggle = st.toggle("🛠️ Dev Mode (Hide UI)", value=st.session_state.get("dev_mode", False))
         if dev_mode_toggle != st.session_state.get("dev_mode", False):
             st.session_state.dev_mode = dev_mode_toggle
             st.rerun()
 
-    # Route according to active page
+    # --- Page Render Execution ---
     if st.session_state.current_page == "🏠 Main Dashboard":
         render_dashboard()
     elif st.session_state.current_page == "📂 Upload & Ingest":
         render_upload()
-    elif st.session_state.current_page == "🔬 Investigation Workbench":
-        render_workbench()
-    elif st.session_state.current_page == "🕸️ Threat Graph & Campaigns":  # <-- 2. ADDED HERE
+    elif st.session_state.current_page == "🕸️ Threat Graph & Campaigns":
         render_correlation_view()
     elif st.session_state.current_page == "🗄️ Database Ledger":
         render_ledger()

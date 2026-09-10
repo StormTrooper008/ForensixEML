@@ -111,8 +111,9 @@ def init_db():
     conn.close()
 
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
+    # Increased timeout to 20 seconds so it waits instead of crashing
+    conn = sqlite3.connect("forensics.db", timeout=20) 
+    # Enable Write-Ahead Logging for concurrent reading/writing
+    conn.execute("PRAGMA journal_mode=WAL") 
     conn.row_factory = sqlite3.Row
     return conn
-
-init_db()
