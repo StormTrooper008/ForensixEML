@@ -112,6 +112,7 @@ def render_workbench():
         if selected:
             telemetry = json.loads(selected['telemetry']) if selected['telemetry'] else {}
             data = {
+                "case_id": selected["case_id"], # <-- Added this so it's not UNKNOWN
                 "file_name": selected["file_name"],
                 "hash": selected["sha256"],
                 "risk_score": selected["risk_score"],
@@ -124,24 +125,25 @@ def render_workbench():
                 "intel": telemetry.get("intel", {})
             }
             
-            # --- PDF DOWNLOAD BUTTON BLOCK ---
-            col1, col2 = st.columns([3, 1])
+            # --- PDF EXPORT & LOCAL PATH BLOCK ---
+            col1, col2 = st.columns([2.5, 1.5])
             with col1:
                 st.write(f"**Investigating:** `{data['file_name']}` | **SHA256:** `{data['hash']}`")
             with col2:
-                pdf_bytes = generate_case_pdf(data)
-                st.download_button(
-                    label="📄 Download PDF Report",
-                    data=pdf_bytes,
-                    file_name=f"{active_case_id}_Forensic_Report.pdf",
-                    mime="application/pdf",
-                    use_container_width=True
-                )
-            # ------------------------------------------------
+                if st.button("📄 Generate Forensic Report", key=f"gen_pdf_{active_case_id}", use_container_width=True):
+                    saved_path = generate_case_pdf(data)
+                    if saved_path:
+                        st.session_state[f"last_report_{active_case_id}"] = saved_path
+                        st.toast("Report saved successfully to local disk!", icon="📁")
+                    else:
+                        st.error("Failed to generate local report.")
 
-            # --- AI EXECUTIVE BRIEFING ---
-            ai_summary_text = data.get("ai_insight", "No summary available for this case.")
-            st.info(f"**🧠 AI Executive Summary:**\n\n{ai_summary_text}")
+            # Display path popup cleanly right under the header
+            report_key = f"last_report_{active_case_id}"
+            if st.session_state.get(report_key):
+                st.success("✨ Immutable Forensic PDF Report Generated & Saved Locally:")
+                st.code(st.session_state[report_key], language="text")
+
             st.divider()
             
             # --- THE 6 TABS ---

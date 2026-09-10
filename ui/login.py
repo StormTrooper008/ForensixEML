@@ -3,7 +3,7 @@ import streamlit as st
 
 def render_login():
     """Renders the authentication portal and sets RBAC session parameters."""
-    st.markdown("<h2>Cyber Forensics | Gateway</h2>", unsafe_allow_html=True)
+    st.markdown("<h2>Email Cyber Forensics | Gateway</h2>", unsafe_allow_html=True)
     st.caption("Institutional & Enterprise Access Portal")
 
     col1, col2 = st.columns([1.5, 1])

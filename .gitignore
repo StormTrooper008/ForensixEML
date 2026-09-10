@@ -22,3 +22,6 @@ inbox_spool/*
 
 test_emails/*
 !test_emails/.gitkeep
+
+Case Reports/*
+!Case Reports/.gitkeep
