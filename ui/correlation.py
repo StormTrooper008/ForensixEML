@@ -13,15 +13,26 @@ def render_interactive_graph(G: nx.Graph, height="500px", graph_key="main_graph"
     # Check if a node was previously clicked to apply highlight logic
     selected_node = st.session_state.get(f"selected_{graph_key}", None)
     
-    # Determine the neighborhood of the clicked node
-    # Determine the neighborhood of the clicked node
     highlight_nodes = set()
     if selected_node and G.has_node(selected_node):
         highlight_nodes.add(selected_node)
         highlight_nodes.update(G.neighbors(selected_node))
         
-        # Display a banner confirming what is selected
-        st.info(f"🎯 **Focus Mode:** Isolating connections for `{selected_node}`. Click the background to reset.")
+        node_type = G.nodes[selected_node].get("node_type", "")
+        
+        # --- FEATURE 1: DEEP LINKING TO WORKBENCH ---
+        if node_type == "CASE":
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                st.info(f"🎯 **Focus Mode:** Isolating connections for `{selected_node}`. Click background to reset.")
+            with col2:
+                # The teleport button
+                if st.button(f"🔍 Investigate {selected_node} in Workbench", type="primary", use_container_width=True):
+                    st.session_state.selected_case = selected_node
+                    st.session_state.current_page = "🔬 Investigation Workbench"
+                    st.rerun()
+        else:
+            st.info(f"🎯 **Focus Mode:** Isolating connections for `{selected_node}`. Click the background to reset.")
 
     nodes = []
     edges = []
@@ -35,19 +46,15 @@ def render_interactive_graph(G: nx.Graph, height="500px", graph_key="main_graph"
         n_type = data.get("node_type", "CASE")
         base_color = color_map.get(n_type, "#abb2bf")
         
-        # --- THE NEW GHOSTING LOGIC ---
         if selected_node and node not in highlight_nodes:
-            # Unrelated Nodes: 95% transparent, invisible text, tiny size
             node_color = "rgba(30, 34, 42, 0.05)" 
             font_color = "rgba(0, 0, 0, 0)"      
             size = 5                              
         elif selected_node and node == selected_node:
-            # The Clicked Node: Massive size, bright text
             node_color = base_color
             font_color = "#ffffff"
             size = 45
         else:
-            # Neighbors (or default unselected state)
             node_color = base_color
             font_color = "#d8dee9"
             size = 25 if n_type == "CASE" else 15
@@ -67,29 +74,25 @@ def render_interactive_graph(G: nx.Graph, height="500px", graph_key="main_graph"
         
     for u, v in G.edges():
         if selected_node and (u not in highlight_nodes or v not in highlight_nodes):
-            edge_color = "rgba(0, 0, 0, 0)" # Unrelated edges become 100% invisible
+            edge_color = "rgba(0, 0, 0, 0)" 
         else:
             edge_color = "#5c6370"
             
         edges.append(Edge(source=u, target=v, color=edge_color))
         
-    # 3. Configure Native Physics & Layout
     config = Config(
         width=800,
         height=int(height.replace("px", "")),
         directed=False, 
-        physics=True,  # Keeps Python's type-checker happy
+        physics=True,  
         hierarchical=False,
         nodeSpacing=150,
         layout={"improvedLayout": False}
     )
-    # Bypasses the type-checker to send advanced settings directly to the JS engine
     config.physics = {"enabled": True, "stabilization": {"iterations": 50}}
 
-    # Capture the click event
     clicked = agraph(nodes=nodes, edges=edges, config=config)
     
-    # Update state and rerun if a new node was clicked
     if clicked != selected_node:
         st.session_state[f"selected_{graph_key}"] = clicked
         st.rerun()
@@ -97,6 +100,10 @@ def render_interactive_graph(G: nx.Graph, height="500px", graph_key="main_graph"
 def render_correlation_view():
     st.markdown("<h2>🕸️ Threat Graph & Campaign Correlation</h2>", unsafe_allow_html=True)
     st.caption("Click any node to isolate its connections. Click the background to reset.")
+
+    # Initialize session state for custom campaign tags
+    if "campaign_tags" not in st.session_state:
+        st.session_state.campaign_tags = {}
 
     data = build_threat_graph()
     
@@ -131,7 +138,28 @@ def render_correlation_view():
         for idx, camp in enumerate(data["campaigns"]):
             is_cl = camp["is_cluster"]
             badge = "🚨 Coordinated Campaign" if is_cl else "Single-Incident"
-            with st.expander(f"**{camp['campaign_name']}** — {badge} ({camp['case_count']} Cases, Avg Risk: {camp['avg_risk']}%)", expanded=is_cl):
+            
+            # Retrieve custom tag if it exists, otherwise fallback to the AI default
+            camp_key = f"camp_tag_{idx}"
+            display_name = st.session_state.campaign_tags.get(camp_key, camp['campaign_name'])
+            
+            # --- FEATURE 2: MINIMIZED BY DEFAULT ---
+            with st.expander(f"**{display_name}** — {badge} ({camp['case_count']} Cases, Avg Risk: {camp['avg_risk']}%)", expanded=False):
+                
+                # --- FEATURE 3: CUSTOM TAGGING UI ---
+                tag_col1, tag_col2 = st.columns([3, 1])
+                with tag_col1:
+                    new_tag = st.text_input("Assign Custom Tag/Name:", value=display_name, key=f"input_{camp_key}")
+                with tag_col2:
+                    st.write("") # Vertical padding alignment
+                    st.write("")
+                    if st.button("💾 Save Tag", key=f"btn_{camp_key}", use_container_width=True):
+                        st.session_state.campaign_tags[camp_key] = new_tag
+                        st.toast("Campaign tag successfully updated.")
+                        st.rerun()
+                        
+                st.divider()
+
                 c_left, c_right = st.columns([1, 1.5])
                 with c_left:
                     st.write("**Associated Cases:**")
