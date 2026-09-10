@@ -1,8 +1,10 @@
+# logic/intel.py
 import re
 from logic.database import get_db_connection
+from logic.domain_intel import get_domain_intelligence
 
 def check_ledger_intelligence(sender_header: str, origin_ip: str, extracted_urls: list) -> dict:
-    """Cross-references email artifacts against internal personnel and blocklists."""
+    """Cross-references email artifacts against internal personnel, blocklists, and live DNS/WHOIS."""
     conn = get_db_connection()
     cursor = conn.cursor()
     
@@ -10,11 +12,11 @@ def check_ledger_intelligence(sender_header: str, origin_ip: str, extracted_urls
         "is_spoofing": False,
         "spoofed_user": None,
         "blocklist_hits": [],
-        "penalty": 0
+        "penalty": 0,
+        "domain_whois": {} # <-- NEW: Storing the domain infrastructure data
     }
     
-    # --- 1. personnel Spoofing Detection ---
-    # Attempt to split "Name <email@domain.com>"
+    # --- 1. Personnel Spoofing Detection ---
     name_part = ""
     email_part = sender_header
     match = re.match(r"(.*)<(.*)>", sender_header)
@@ -23,36 +25,38 @@ def check_ledger_intelligence(sender_header: str, origin_ip: str, extracted_urls
         email_part = match.group(2).strip()
         
     if name_part:
-        # Check if the display name matches a protected personnel (case-insensitive)
         cursor.execute("SELECT email, designation FROM personnel WHERE full_name COLLATE NOCASE = ?", (name_part,))
         emp = cursor.fetchone()
-        
-        # If the name matches, but the sending email doesn't match their real email: SPOOF DETECTED
         if emp and emp["email"].lower() != email_part.lower():
             intelligence["is_spoofing"] = True
             intelligence["spoofed_user"] = f"{name_part} ({emp['designation']})"
             intelligence["penalty"] += 50
 
-    # Extract the domain from the sender's email address
     sender_domain = email_part.split('@')[-1].lower() if '@' in email_part else ""
 
-    # --- 2. Blocklist Checks ---
-    
-    # Check IP
+    # --- 2. Live Domain Recon (WHOIS/DNS) ---
+    if sender_domain:
+        domain_data = get_domain_intelligence(email_part)
+        intelligence["domain_whois"] = domain_data
+        
+        # If the domain is under 30 days old, it's highly suspicious
+        if domain_data.get("is_suspicious"):
+            intelligence["blocklist_hits"].append(f"⚠️ Suspicious Domain: Registered recently (< 30 days old)")
+            intelligence["penalty"] += 25
+
+    # --- 3. Blocklist Checks ---
     cursor.execute("SELECT reason FROM blocklist WHERE indicator_type = 'IP' AND indicator_value = ?", (origin_ip,))
     hit = cursor.fetchone()
     if hit:
         intelligence["blocklist_hits"].append(f"Blocked IP: {origin_ip} ({hit['reason']})")
         intelligence["penalty"] += 50
         
-    # Check Sender Email (Exact Match)
     cursor.execute("SELECT reason FROM blocklist WHERE indicator_type = 'EMAIL' AND indicator_value = ?", (email_part,))
     hit = cursor.fetchone()
     if hit:
         intelligence["blocklist_hits"].append(f"Blocked Email: {email_part} ({hit['reason']})")
         intelligence["penalty"] += 50
         
-    # Check Sender Domain (Broad Match)
     if sender_domain:
         cursor.execute("SELECT reason FROM blocklist WHERE indicator_type = 'DOMAIN' AND indicator_value = ?", (sender_domain,))
         hit = cursor.fetchone()
@@ -60,7 +64,6 @@ def check_ledger_intelligence(sender_header: str, origin_ip: str, extracted_urls
             intelligence["blocklist_hits"].append(f"Blocked Sender Domain: @{sender_domain} ({hit['reason']})")
             intelligence["penalty"] += 50
         
-    # Check URLs against Domain Blocklist
     for url in extracted_urls:
         domain_match = re.search(r"https?://([^/]+)", url)
         if domain_match:

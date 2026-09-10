@@ -209,6 +209,37 @@ def render_workbench():
                 heur_data = data.get("heur", {})
                 intel_data = data.get("intel", {})
                 st.metric("Total Heuristic & Intel Penalty", f"+ {heur_data.get('score', 0) + intel_data.get('penalty', 0)} points")
+                
+                # --- Domain Infrastructure UI ---
+                st.divider()
+                st.subheader("🌍 Sender Domain Infrastructure (WHOIS/DNS)")
+                whois_data = intel_data.get("domain_whois", {})
+                
+                if whois_data.get("status") == "OFFLINE":
+                    st.warning("📴 **Air-Gapped Mode Active:** The system is currently offline. Live domain reconnaissance is paused to prevent data leaks. Connect to the internet and re-ingest the file to fetch DNS/WHOIS data.")
+                elif whois_data and not whois_data.get("error"):
+                    if whois_data.get("status") == "CACHED":
+                        st.caption("💾 *Data loaded from local offline cache.*")
+                    
+                    col_w1, col_w2, col_w3 = st.columns(3)
+                    col_w1.metric("Domain Age", f"{whois_data.get('age_days', 'Unknown')} days")
+                    col_w2.metric("Registrar", str(whois_data.get("registrar", "Unknown"))[:20])
+                    col_w3.metric("Creation Date", whois_data.get("creation_date", "Unknown"))
+                    
+                    if whois_data.get("is_suspicious"):
+                        st.error("🚨 **WARNING:** This domain was registered very recently. This is a massive red flag for disposable phishing infrastructure.")
+                        
+                    with st.expander("View Raw DNS Records (A, MX, TXT)"):
+                        st.write("**A Records (IPv4):**")
+                        st.code("\n".join(whois_data.get("a_records", [])) or "None found", language="text")
+                        st.write("**MX Records (Mail Exchange):**")
+                        st.code("\n".join(whois_data.get("mx_records", [])) or "None found", language="text")
+                        st.write("**TXT Records (SPF/DMARC/Verification):**")
+                        st.code("\n".join(whois_data.get("txt_records", [])) or "None found", language="text")
+                else:
+                    st.info("No valid domain infrastructure data could be extracted.")
+                # ------------------------------------
+
                 st.divider()
                 st.subheader("🛡️ Internal Ledger Cross-Reference")
                 if intel_data.get("is_spoofing"):
