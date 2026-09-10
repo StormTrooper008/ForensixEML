@@ -29,16 +29,19 @@ def render_interactive_graph(G: nx.Graph, height="500px", graph_key="main_graph"
 
     for node, data in G.nodes(data=True):
         n_type = data.get("node_type", "CASE")
+        base_color = color_map.get(n_type, "#abb2bf")
         
-        # Color logic: Full color if highlighted or nothing selected, otherwise dim gray
+        # Aggressive Dimming Logic
+        # Aggressive Blackout Logic
         if selected_node and node not in highlight_nodes:
-            color = "#2b313d" # Dimmed out
-            opacity = 0.3
+            color = "#0e1117"       # Blend perfectly into the background
+            font_color = "#0e1117"  # Hide text completely
+            size = 1                # Shrink to near-zero
         else:
-            color = color_map.get(n_type, "#abb2bf")
-            opacity = 1.0
+            color = base_color
+            font_color = "#d8dee9"
+            size = 25 if n_type == "CASE" else 15
             
-        size = 25 if n_type == "CASE" else 15
         title = f"{n_type}:\n{data.get('label', node)}"
         if n_type == "CASE":
             title += f"\nRisk: {data.get('risk', 'N/A')}"
@@ -49,15 +52,15 @@ def render_interactive_graph(G: nx.Graph, height="500px", graph_key="main_graph"
             size=size,
             color=color,
             title=title,
-            opacity=opacity
+            font={"color": font_color} # Applies the text hiding
         ))
         
     for u, v in G.edges():
-        # Dim edges that aren't connected to the highlighted cluster
-        if selected_node and u not in highlight_nodes and v not in highlight_nodes:
-            edge_color = "#1e222a"
+        # Hide edges completely if they aren't attached to the highlighted cluster
+        if selected_node and (u not in highlight_nodes or v not in highlight_nodes):
+            edge_color = "rgba(0, 0, 0, 0)" # 100% Transparent
         else:
-            edge_color = "#5c6370"
+            edge_color = "#5c6370" # Normal visible edge
             
         edges.append(Edge(source=u, target=v, color=edge_color))
         
