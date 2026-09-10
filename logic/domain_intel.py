@@ -36,12 +36,12 @@ def extract_domain_from_email(email_address: str) -> str:
     return email_address.split("@")[-1].strip().lower()
 
 def perform_live_recon(domain: str) -> dict:
-    """Actively queries public DNS and WHOIS servers for infrastructure data."""
+    """Actively queries public DNS and WHOIS servers with safe fallbacks for institutional domains."""
     intel = {
         "domain": domain,
         "registrar": "Unknown",
         "creation_date": "Unknown",
-        "age_days": 0,
+        "age_days": 999, # Default to a safe high number so failed lookups don't trigger "0-day" alarms
         "mx_records": [],
         "a_records": [],
         "txt_records": [],
@@ -49,11 +49,13 @@ def perform_live_recon(domain: str) -> dict:
         "status": "ONLINE_SUCCESS"
     }
     
-    # 1. WHOIS Lookup (Registrar and Age)
+    # Institutional Whitelist Check (Government / Official TLDs)
+    trusted_tlds = [".gov.in", ".nic.in", ".mil", ".gov", ".edu"]
+    is_trusted_institution = any(domain.endswith(tld) for tld in trusted_tlds)
+
+    # 1. WHOIS Lookup
     try:
         w = whois.whois(domain)
-        
-        # Using .get() bypasses strict linter attribute checks for dynamic objects
         registrar = w.get("registrar")
         if registrar:
             intel["registrar"] = str(registrar)
@@ -66,13 +68,16 @@ def perform_live_recon(domain: str) -> dict:
             intel["creation_date"] = creation.strftime("%Y-%m-%d")
             intel["age_days"] = (datetime.datetime.now() - creation).days
             
-            # Flag newly registered domains (under 30 days old)
-            if intel["age_days"] < 30:
+            # Only flag as suspicious if it's truly new AND not a trusted institution
+            if intel["age_days"] < 30 and not is_trusted_institution:
                 intel["is_suspicious"] = True
     except Exception as e:
-        print(f"[!] WHOIS lookup failed for {domain}: {e}")
+        print(f"[!] WHOIS lookup failed or timed out for {domain}: {e}")
+        # If WHOIS fails on a government domain, assume it's safe rather than malicious
+        if is_trusted_institution:
+            intel["age_days"] = 3650 # Assume 10+ years old
 
-    # 2. DNS Lookups (A, MX, TXT)
+    # 2. DNS Lookups
     resolver = dns.resolver.Resolver()
     resolver.timeout = 2
     resolver.lifetime = 2

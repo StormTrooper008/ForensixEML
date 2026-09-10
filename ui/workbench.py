@@ -2,14 +2,13 @@
 import streamlit as st
 import json
 import sqlite3
+import networkx as nx
+from streamlit_agraph import agraph, Node, Edge, Config
 import folium
 from streamlit_folium import st_folium
 from logic.export import generate_case_pdf
 import pandas as pd
 from logic.database import get_db_connection
-
-import networkx as nx
-from streamlit_agraph import agraph, Node, Edge, Config
 
 def fetch_recent_cases(limit=50):
     """Fetches the latest ingested cases directly from the database for the live feed."""
@@ -39,6 +38,32 @@ def render_workbench():
         st.info("📭 Inbox is empty. Start the Auto-Ingestion Daemon or upload files to see data here.")
         return
 
+    # --- INTELLIGENT CASE SELECTION & RETENTION ---
+    active_case_id = st.session_state.get("selected_case")
+    
+    # If the selected case isn't in our current list, check if it exists in the full DB 
+    # (in case the background daemon pushed it past the top 50 limit)
+    case_ids = [c['case_id'] for c in cases]
+    
+    if active_case_id and active_case_id not in case_ids:
+        # Fetch that specific case directly so it doesn't get lost
+        conn = get_db_connection()
+        conn.row_factory = sqlite3.Row if hasattr(sqlite3, 'Row') else conn.row_factory
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM cases WHERE case_id = ?", (active_case_id,))
+        specific_case = cursor.fetchone()
+        conn.close()
+        
+        if specific_case:
+            # Prepend it to our cases list so it renders in the UI
+            cases.insert(0, dict(specific_case))
+            case_ids.insert(0, active_case_id)
+
+    # Final fallback to newest if nothing is selected at all
+    if not active_case_id or active_case_id not in case_ids:
+        active_case_id = cases[0]['case_id']
+        st.session_state.selected_case = active_case_id
+
     # --- Dual Pane Layout (1:2.2 Ratio) ---
     col_list, col_details = st.columns([1, 2.2])
     
@@ -59,7 +84,12 @@ def render_workbench():
                 short_sender = (c['sender'][:25] + '...') if len(c['sender']) > 25 else c['sender']
                 short_subject = (c['subject'][:30] + '...') if len(c['subject']) > 30 else c['subject']
                 
+                is_currently_selected = (c['case_id'] == active_case_id)
+                
+                # Render a container with a visual border highlight if it's the active case
                 with st.container(border=True):
+                    if is_currently_selected:
+                        st.markdown(f"👉 **`{c['case_id']}`** (Active)")
                     st.markdown(f"**{short_sender}**")
                     st.markdown(f"*{short_subject}*")
                     
@@ -67,24 +97,19 @@ def render_workbench():
                     with bottom_left:
                         st.markdown(f":{status_color}[**{icon} {c['status']}**] ({c['risk_score']}%)")
                     with bottom_right:
-                        if st.button("View", key=f"btn_{c['case_id']}", use_container_width=True):
+                        btn_label = "Viewing" if is_currently_selected else "View"
+                        btn_type = "primary" if is_currently_selected else "secondary"
+                        if st.button(btn_label, key=f"btn_{c['case_id']}", type=btn_type, use_container_width=True):
                             st.session_state.selected_case = c['case_id']
                             st.rerun()
 
     # -----------------------------------------
-    # RIGHT PANE: The Forensic Dossier (Your Tabs)
+    # RIGHT PANE: The Forensic Dossier
     # -----------------------------------------
     with col_details:
-        active_case_id = st.session_state.get("selected_case")
-        
-        if not active_case_id:
-            st.info("👈 Select an email from the inbox list to view its forensic dossier.")
-            return
-            
         selected = next((c for c in cases if c['case_id'] == active_case_id), None)
         
         if selected:
-            # Reconstruct the 'data' dictionary from SQLite to match your existing tab code
             telemetry = json.loads(selected['telemetry']) if selected['telemetry'] else {}
             data = {
                 "file_name": selected["file_name"],
@@ -119,7 +144,7 @@ def render_workbench():
             st.info(f"**🧠 AI Executive Summary:**\n\n{ai_summary_text}")
             st.divider()
             
-            # --- YOUR EXISTING 5 TABS + THE NEW TRACE MAP TAB ---
+            # --- THE 6 TABS ---
             t1, t2, t3, t4, t5, t6 = st.tabs(["Headers & Body", "Authentication", "Geo Map", "Threat Intel", "📎 Attachments", "🛤️ Trace Map"])
 
             with t1:
@@ -210,13 +235,12 @@ def render_workbench():
                 intel_data = data.get("intel", {})
                 st.metric("Total Heuristic & Intel Penalty", f"+ {heur_data.get('score', 0) + intel_data.get('penalty', 0)} points")
                 
-                # --- Domain Infrastructure UI ---
                 st.divider()
                 st.subheader("🌍 Sender Domain Infrastructure (WHOIS/DNS)")
                 whois_data = intel_data.get("domain_whois", {})
                 
                 if whois_data.get("status") == "OFFLINE":
-                    st.warning("📴 **Air-Gapped Mode Active:** The system is currently offline. Live domain reconnaissance is paused to prevent data leaks. Connect to the internet and re-ingest the file to fetch DNS/WHOIS data.")
+                    st.warning("📴 **Air-Gapped Mode Active:** The system is currently offline. Live domain reconnaissance is paused to prevent data leaks.")
                 elif whois_data and not whois_data.get("error"):
                     if whois_data.get("status") == "CACHED":
                         st.caption("💾 *Data loaded from local offline cache.*")
@@ -227,7 +251,7 @@ def render_workbench():
                     col_w3.metric("Creation Date", whois_data.get("creation_date", "Unknown"))
                     
                     if whois_data.get("is_suspicious"):
-                        st.error("🚨 **WARNING:** This domain was registered very recently. This is a massive red flag for disposable phishing infrastructure.")
+                        st.error("🚨 **WARNING:** This domain was registered very recently. Massive red flag for disposable phishing infrastructure.")
                         
                     with st.expander("View Raw DNS Records (A, MX, TXT)"):
                         st.write("**A Records (IPv4):**")
@@ -238,7 +262,6 @@ def render_workbench():
                         st.code("\n".join(whois_data.get("txt_records", [])) or "None found", language="text")
                 else:
                     st.info("No valid domain infrastructure data could be extracted.")
-                # ------------------------------------
 
                 st.divider()
                 st.subheader("🛡️ Internal Ledger Cross-Reference")
@@ -285,9 +308,7 @@ def render_workbench():
                         st.write(f"**Size:** `{att.get('size_kb')} KB` | **Type:** `{att.get('content_type')}`")
                         st.write(f"**SHA256 Fingerprint:** `{att.get('sha256')}`")
                         st.divider()
-            
-            # --- THE NEW TRACE MAP TAB ---
-            # --- THE VISUAL TRACE MAP TAB ---
+
             with t6:
                 st.subheader("🛤️ Visual Route Graph")
                 st.caption("De-classified path from the message's Received headers: Sender → Relay Hops → Destination.")
@@ -296,17 +317,14 @@ def render_workbench():
                 if not hops:
                     st.info("No relay hops could be parsed from this email envelope.")
                 else:
-                    # 1. Build the Graph
                     nodes = []
                     edges = []
                     
-                    # Create Sender Node
                     sender_email = data['decomp']['headers'].get('From', 'Unknown Sender')
                     nodes.append(Node(id="Start", label=sender_email[:30], color="#e06c75", shape="dot", size=25, title="Claimed Sender"))
                     
                     prev_node_id = "Start"
                     
-                    # Create Relay Nodes
                     for hop in hops:
                         delay = hop.get('delay_seconds', 0)
                         hop_num = hop['hop_number']
@@ -319,7 +337,6 @@ def render_workbench():
                             
                             node_id = f"Hop_{hop_num}"
                             
-                            # Styling based on infrastructure type
                             if scope == "RFC_1918_INTERNAL":
                                 color = "#e5c07b" 
                                 label = f"{ip_str}\n(Internal / VPN)"
@@ -337,27 +354,21 @@ def render_workbench():
                                 title=hop.get("raw_text", "No raw telemetry")
                             ))
                             
-                            # Connect to previous node with delay metrics
                             edge_label = f" {delay}s delay" if delay > 0 else " instant"
                             edges.append(Edge(source=prev_node_id, target=node_id, label=edge_label, color="#abb2bf"))
                             
                             prev_node_id = node_id
                             
-                    # Create Recipient Node
                     nodes.append(Node(id="End", label="Your Organization", color="#98c379", shape="dot", size=25, title="Final Destination"))
                     edges.append(Edge(source=prev_node_id, target="End", color="#abb2bf"))
                     
-                    # 2. Render Left-to-Right Hierarchical Layout
-                    # 2. Render Left-to-Right Hierarchical Layout
                     config = Config(
                         width=800,
                         height=350,
                         directed=True,
                         physics=False,
-                        hierarchical=True # Appease the linter with a simple boolean
+                        hierarchical=True
                     )
-                    
-                    # Bypass the Python type-checker to send advanced config to the JS engine
                     config.layout = {
                         "hierarchical": {
                             "enabled": True, 
@@ -378,7 +389,6 @@ def render_workbench():
                     
                     agraph(nodes=nodes, edges=edges, config=config)
 
-                    # 3. Keep the raw breakdown for the judges in an expander
                     with st.expander("Show Raw Hop Telemetry & Extracted Headers"):
                         for hop in hops:
                             st.markdown(f"**Hop {hop['hop_number']} Timestamp:** `{hop.get('timestamp', 'Unknown')}`")

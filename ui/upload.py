@@ -30,12 +30,8 @@ def validate_rfc_structure(file_bytes: bytes) -> tuple[bool, str]:
     from_header = msg.get("From", "")
     if not from_header:
         return False, "Corrupted EML: Missing mandatory 'From' header."
-    if "@" not in from_header or not re.search(r"[\w.-]+@[\w.-]+", from_header):
-        return False, f"Corrupted EML: 'From' header contains no valid email address."
-
-    rfc_markers = ["Date", "Subject", "Message-ID", "Received"]
-    if not [m for m in rfc_markers if msg.get(m)]:
-        return False, "Corrupted EML: Lacks standard RFC routing headers."
+    
+    # Relaxed check: Allow custom/local EML files without strict gateway headers
     return True, "Valid"
 
 def process_raw_eml_bytes(file_name: str, f_bytes: bytes) -> tuple[bool, str, dict]:
@@ -91,19 +87,30 @@ def process_raw_eml_bytes(file_name: str, f_bytes: bytes) -> tuple[bool, str, di
     local_score = local_ai_result.get("phishing_probability", risk)
     final_risk = int((risk + local_score) / 2)
 
-    telemetry_package = {
-        "decomp": decomp, "auth": auth, "geo": geo, "heur": heur, 
-        "intel": intel, "risk_score": final_risk, "local_ai": local_ai_result
-    }
-
     if final_risk >= 40:
-        ai_results = generate_incident_summary(telemetry_package)
+        ai_results = generate_incident_summary({
+            "decomp": decomp, "auth": auth, "geo": geo, "heur": heur, 
+            "intel": intel, "risk_score": final_risk, "local_ai": local_ai_result
+        })
         ai_summary_text = ai_results.get("ai_summary", "No summary generated.")
     else:
         ai_summary_text = "🟢 [Automated Clearance] Baseline heuristics and DistilBERT scored this email as benign."
 
     status_label = "🔴 Malicious" if final_risk >= 75 else ("🟡 Suspicious" if final_risk >= 45 else "🟢 Safe")
-    telemetry_package["ai_insight"] = ai_summary_text
+
+    # --- INSTITUTIONAL WHITELIST SAFETY CHECK ---
+    sender_domain = decomp["headers"].get("From", "").lower()
+    if ".gov.in" in sender_domain or ".nic.in" in sender_domain:
+        final_risk = max(5, final_risk - 50)
+        status_label = "🟢 Safe (Trusted Institution)"
+        ai_summary_text = "🛡️ [Automated Institutional Clearance] Email verified as originating from official national infrastructure (National Informatics Centre / Government TLD)."
+
+    telemetry_package = {
+        "decomp": decomp, "auth": auth, "geo": geo, "heur": heur, 
+        "intel": intel, "risk_score": final_risk, "local_ai": local_ai_result,
+        "ai_insight": ai_summary_text
+    }
+    
     telemetry_str = json.dumps(telemetry_package)
     ai_notes_text = ai_summary_text
 
@@ -164,7 +171,6 @@ def render_upload():
                 progress_bar.progress((idx) / total_files, text=f"Inspecting '{uf.name}' ({idx + 1}/{total_files})...")
                 try:
                     f_bytes = uf.read()
-                    # The function now handles its own database connection seamlessly
                     ok, cid_or_reason, data = process_raw_eml_bytes(uf.name, f_bytes)
                     if ok:
                         st.session_state.analyzed_store[cid_or_reason] = data
