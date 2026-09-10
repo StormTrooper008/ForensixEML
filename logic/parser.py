@@ -7,6 +7,8 @@ import dkim
 import re
 import hashlib
 from typing import Any, Dict, List, Optional
+from email.utils import parsedate_to_datetime
+import datetime
 
 # High-risk executable and script extensions
 HIGH_RISK_EXTENSIONS = {
@@ -109,26 +111,50 @@ def parse_step1_headers(eml_bytes: bytes) -> Dict[str, Any]:
 
     recipients = []
     for name, addr in getaddresses([to_header]):
-        if addr:
-            recipients.append({"name": name.strip() or "Unknown / Not Provided", "email": addr.lower(), "type": "TO"})
+        if addr: recipients.append({"name": name.strip() or "Unknown", "email": addr.lower(), "type": "TO"})
     for name, addr in getaddresses([cc_header]):
-        if addr:
-            recipients.append({"name": name.strip() or "Unknown / Not Provided", "email": addr.lower(), "type": "CC"})
+        if addr: recipients.append({"name": name.strip() or "Unknown", "email": addr.lower(), "type": "CC"})
     for name, addr in getaddresses([bcc_header]):
-        if addr:
-            recipients.append({"name": name.strip() or "Unknown / Not Provided", "email": addr.lower(), "type": "BCC"})
+        if addr: recipients.append({"name": name.strip() or "Unknown", "email": addr.lower(), "type": "BCC"})
 
-    # 2. Extract and Order Hops Chronologically
+    # 2. Extract and Order Hops Chronologically (WITH TRANSIT DELAYS)
     raw_received = msg.get_all("Received", [])
     ip_regex = r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b"
     hops: List[Dict[str, Any]] = []
     origin_candidate: Optional[Dict[str, Any]] = None
+    
+    previous_time = None
 
     for hop_index, header_value in enumerate(reversed(raw_received), start=1):
         clean_header = header_value.strip().replace("\n", " ").replace("\t", " ")
         found_ips = re.findall(ip_regex, clean_header)
+        
+        # --- NEW: Extract and calculate transit timestamps ---
+        hop_time = None
+        delay_seconds = 0
+        timestamp_str = "Unknown"
+        
+        if ";" in clean_header:
+            try:
+                # The timestamp is almost always after the last semicolon in a Received header
+                time_part = clean_header.rsplit(";", 1)[-1].strip()
+                hop_time = parsedate_to_datetime(time_part)
+                timestamp_str = hop_time.isoformat()
+                
+                if previous_time and hop_time >= previous_time:
+                    delay_seconds = int((hop_time - previous_time).total_seconds())
+                
+                previous_time = hop_time
+            except Exception:
+                pass # Unparseable or malformed date string
 
-        hop_details = {"hop_number": hop_index, "raw_text": clean_header, "extracted_ips": []}
+        hop_details = {
+            "hop_number": hop_index, 
+            "raw_text": clean_header, 
+            "extracted_ips": [],
+            "timestamp": timestamp_str,
+            "delay_seconds": delay_seconds
+        }
 
         for ip in found_ips:
             classification = classify_ip_scope(ip)
@@ -151,14 +177,9 @@ def parse_step1_headers(eml_bytes: bytes) -> Dict[str, Any]:
 
     return {
         "headers": {
-            "Subject": subject,
-            "From": from_header,
-            "Return-Path": return_path,
-            "Reply-To": reply_to,
-            "To": to_header,
-            "Cc": cc_header,
-            "Date": date,
-            "Message-ID": message_id,
+            "Subject": subject, "From": from_header, "Return-Path": return_path,
+            "Reply-To": reply_to, "To": to_header, "Cc": cc_header,
+            "Date": date, "Message-ID": message_id,
         },
         "recipients": recipients,
         "recipient_count": len(recipients),

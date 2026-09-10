@@ -8,6 +8,9 @@ from logic.export import generate_case_pdf
 import pandas as pd
 from logic.database import get_db_connection
 
+import networkx as nx
+from streamlit_agraph import agraph, Node, Edge, Config
+
 def fetch_recent_cases(limit=50):
     """Fetches the latest ingested cases directly from the database for the live feed."""
     conn = get_db_connection()
@@ -116,8 +119,8 @@ def render_workbench():
             st.info(f"**🧠 AI Executive Summary:**\n\n{ai_summary_text}")
             st.divider()
             
-            # --- YOUR EXISTING 5 TABS ---
-            t1, t2, t3, t4, t5 = st.tabs(["Headers & Body", "Authentication", "Geo Map", "Threat Intel", "📎 Attachments"])
+            # --- YOUR EXISTING 5 TABS + THE NEW TRACE MAP TAB ---
+            t1, t2, t3, t4, t5, t6 = st.tabs(["Headers & Body", "Authentication", "Geo Map", "Threat Intel", "📎 Attachments", "🛤️ Trace Map"])
 
             with t1:
                 st.json(data["decomp"].get("headers", {}))
@@ -251,3 +254,101 @@ def render_workbench():
                         st.write(f"**Size:** `{att.get('size_kb')} KB` | **Type:** `{att.get('content_type')}`")
                         st.write(f"**SHA256 Fingerprint:** `{att.get('sha256')}`")
                         st.divider()
+            
+            # --- THE NEW TRACE MAP TAB ---
+            # --- THE VISUAL TRACE MAP TAB ---
+            with t6:
+                st.subheader("🛤️ Visual Route Graph")
+                st.caption("De-classified path from the message's Received headers: Sender → Relay Hops → Destination.")
+                
+                hops = data["decomp"].get("hops", [])
+                if not hops:
+                    st.info("No relay hops could be parsed from this email envelope.")
+                else:
+                    # 1. Build the Graph
+                    nodes = []
+                    edges = []
+                    
+                    # Create Sender Node
+                    sender_email = data['decomp']['headers'].get('From', 'Unknown Sender')
+                    nodes.append(Node(id="Start", label=sender_email[:30], color="#e06c75", shape="dot", size=25, title="Claimed Sender"))
+                    
+                    prev_node_id = "Start"
+                    
+                    # Create Relay Nodes
+                    for hop in hops:
+                        delay = hop.get('delay_seconds', 0)
+                        hop_num = hop['hop_number']
+                        
+                        if hop.get("extracted_ips"):
+                            ip_data = hop["extracted_ips"][0]
+                            ip_str = ip_data.get("ip")
+                            scope = ip_data.get("classification", {}).get("scope", "UNKNOWN")
+                            geo = ip_data.get("geo", {})
+                            
+                            node_id = f"Hop_{hop_num}"
+                            
+                            # Styling based on infrastructure type
+                            if scope == "RFC_1918_INTERNAL":
+                                color = "#e5c07b" 
+                                label = f"{ip_str}\n(Internal / VPN)"
+                            else:
+                                color = "#61afef"
+                                provider = geo.get('org') or geo.get('isp') or "Unknown Provider"
+                                label = f"{ip_str}\n{provider[:20]}"
+                                
+                            nodes.append(Node(
+                                id=node_id, 
+                                label=label, 
+                                color=color, 
+                                shape="dot", 
+                                size=25, 
+                                title=hop.get("raw_text", "No raw telemetry")
+                            ))
+                            
+                            # Connect to previous node with delay metrics
+                            edge_label = f" {delay}s delay" if delay > 0 else " instant"
+                            edges.append(Edge(source=prev_node_id, target=node_id, label=edge_label, color="#abb2bf"))
+                            
+                            prev_node_id = node_id
+                            
+                    # Create Recipient Node
+                    nodes.append(Node(id="End", label="Your Organization", color="#98c379", shape="dot", size=25, title="Final Destination"))
+                    edges.append(Edge(source=prev_node_id, target="End", color="#abb2bf"))
+                    
+                    # 2. Render Left-to-Right Hierarchical Layout
+                    # 2. Render Left-to-Right Hierarchical Layout
+                    config = Config(
+                        width=800,
+                        height=350,
+                        directed=True,
+                        physics=False,
+                        hierarchical=True # Appease the linter with a simple boolean
+                    )
+                    
+                    # Bypass the Python type-checker to send advanced config to the JS engine
+                    config.layout = {
+                        "hierarchical": {
+                            "enabled": True, 
+                            "direction": "LR", 
+                            "sortMethod": "directed", 
+                            "nodeSpacing": 200
+                        }
+                    }
+                    
+                    st.markdown("""
+                    <div style="display:flex; gap:15px; flex-wrap:wrap; background-color:#1e222a; padding:10px; border-radius:6px; font-size:12px; margin-bottom:10px;">
+                        <span style="color:#e06c75">● Claimed Sender</span> 
+                        <span style="color:#61afef">● Public Relay Hop</span>
+                        <span style="color:#e5c07b">● Internal / VPN Network</span> 
+                        <span style="color:#98c379">● Destination</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    agraph(nodes=nodes, edges=edges, config=config)
+
+                    # 3. Keep the raw breakdown for the judges in an expander
+                    with st.expander("Show Raw Hop Telemetry & Extracted Headers"):
+                        for hop in hops:
+                            st.markdown(f"**Hop {hop['hop_number']} Timestamp:** `{hop.get('timestamp', 'Unknown')}`")
+                            st.code(hop.get("raw_text", ""), language="text")
