@@ -4,11 +4,20 @@ import networkx as nx
 from streamlit_agraph import agraph, Node, Edge, Config
 from logic.correlation import build_threat_graph
 
-def render_interactive_graph(G: nx.Graph, height="500px") -> None:
-    """Renders a fully interactive, physics-based network graph natively in Streamlit."""
+def render_interactive_graph(G: nx.Graph, height="500px", graph_key="main_graph") -> None:
+    """Renders the graph and supports click-to-highlight functionality."""
     if G.number_of_nodes() == 0:
         st.info("Empty Graph")
         return
+
+    # Check if a node was previously clicked to apply highlight logic
+    selected_node = st.session_state.get(f"selected_{graph_key}", None)
+    
+    # Determine the neighborhood of the clicked node
+    highlight_nodes = set()
+    if selected_node and G.has_node(selected_node):
+        highlight_nodes.add(selected_node)
+        highlight_nodes.update(G.neighbors(selected_node))
 
     nodes = []
     edges = []
@@ -18,12 +27,18 @@ def render_interactive_graph(G: nx.Graph, height="500px") -> None:
         "ASN": "#c678dd", "ATTACHMENT": "#d19a66", "URL": "#98c379"
     }
 
-    # 1. Build Native Nodes
     for node, data in G.nodes(data=True):
         n_type = data.get("node_type", "CASE")
-        color = color_map.get(n_type, "#abb2bf")
-        size = 25 if n_type == "CASE" else 15
         
+        # Color logic: Full color if highlighted or nothing selected, otherwise dim gray
+        if selected_node and node not in highlight_nodes:
+            color = "#2b313d" # Dimmed out
+            opacity = 0.3
+        else:
+            color = color_map.get(n_type, "#abb2bf")
+            opacity = 1.0
+            
+        size = 25 if n_type == "CASE" else 15
         title = f"{n_type}:\n{data.get('label', node)}"
         if n_type == "CASE":
             title += f"\nRisk: {data.get('risk', 'N/A')}"
@@ -33,12 +48,18 @@ def render_interactive_graph(G: nx.Graph, height="500px") -> None:
             label=str(data.get("label", node))[:15],
             size=size,
             color=color,
-            title=title
+            title=title,
+            opacity=opacity
         ))
         
-    # 2. Build Native Edges
     for u, v in G.edges():
-        edges.append(Edge(source=u, target=v, color="#3b4252"))
+        # Dim edges that aren't connected to the highlighted cluster
+        if selected_node and u not in highlight_nodes and v not in highlight_nodes:
+            edge_color = "#1e222a"
+        else:
+            edge_color = "#5c6370"
+            
+        edges.append(Edge(source=u, target=v, color=edge_color))
         
     # 3. Configure Native Physics & Layout
     config = Config(
@@ -53,12 +74,17 @@ def render_interactive_graph(G: nx.Graph, height="500px") -> None:
     # Bypasses the type-checker to send advanced settings directly to the JS engine
     config.physics = {"enabled": True, "stabilization": {"iterations": 50}}
 
-    # 4. Render instantly (no HTML tempfiles)
-    agraph(nodes=nodes, edges=edges, config=config)
+    # Capture the click event
+    clicked = agraph(nodes=nodes, edges=edges, config=config)
+    
+    # Update state and rerun if a new node was clicked
+    if clicked != selected_node:
+        st.session_state[f"selected_{graph_key}"] = clicked
+        st.rerun()
 
 def render_correlation_view():
     st.markdown("<h2>🕸️ Threat Graph & Campaign Correlation</h2>", unsafe_allow_html=True)
-    st.caption("Native interactive graph analysis. Drag nodes, zoom in/out, and hover for detailed entity telemetry.")
+    st.caption("Click any node to isolate its connections. Click the background to reset.")
 
     data = build_threat_graph()
     
@@ -84,17 +110,20 @@ def render_correlation_view():
     tab_overview, tab_campaigns = st.tabs(["🌐 Master Entity Graph", "🎯 Campaign Clusters"])
 
     with tab_overview:
-        render_interactive_graph(data["full_graph"], height="700px")
+        if st.button("🔄 Reset Graph Highlight"):
+            st.session_state["selected_main_graph"] = None
+            st.rerun()
+        render_interactive_graph(data["full_graph"], height="700px", graph_key="main_graph")
 
     with tab_campaigns:
-        for camp in data["campaigns"]:
+        for idx, camp in enumerate(data["campaigns"]):
             is_cl = camp["is_cluster"]
             badge = "🚨 Coordinated Campaign" if is_cl else "Single-Incident"
             with st.expander(f"**{camp['campaign_name']}** — {badge} ({camp['case_count']} Cases, Avg Risk: {camp['avg_risk']}%)", expanded=is_cl):
-                c_left, c_right = st.columns([1, 1.5]) # Gave the graph column a bit more width
+                c_left, c_right = st.columns([1, 1.5])
                 with c_left:
                     st.write("**Associated Cases:**")
                     for c in camp["cases"]:
                         st.markdown(f"- **`{c['case_id']}`**: From: `{c['sender']}`, IP: `{c['origin_ip']}`, Risk: **{c['risk_score']}**")
                 with c_right:
-                    render_interactive_graph(camp["graph"], height="400px")
+                    render_interactive_graph(camp["graph"], height="400px", graph_key=f"camp_graph_{idx}")

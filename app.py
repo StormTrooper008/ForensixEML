@@ -38,14 +38,21 @@ if "selected_case" not in st.session_state:
 if "tz_pref" not in st.session_state:
     st.session_state.tz_pref = "UTC"
 
-# --- GLOBAL UI CONCEALMENT ---
-#if not st.session_state.get("dev_mode", False):
-#    st.markdown("""
-#        <style>
-#            #MainMenu {visibility: hidden;}
-#            [data-testid="stToolbar"] {visibility: hidden;}
-#        </style>
-#    """, unsafe_allow_html=True)
+# --- GLOBAL UI CONCEALMENT (Safe Mode) ---
+if st.session_state.get("dev_mode", False):
+    st.markdown("""
+        <style>
+            /* Hide the top-right menu and deploy button */
+            [data-testid="stToolbar"] {visibility: hidden !important;}
+            #MainMenu {visibility: hidden !important;}
+            
+            /* Force the sidebar expand/collapse button to ALWAYS remain visible */
+            [data-testid="collapsedControl"] {
+                visibility: visible !important;
+                z-index: 9999 !important;
+            }
+        </style>
+    """, unsafe_allow_html=True)
 
 # --- Routing Engine ---
 if not st.session_state.logged_in:
@@ -68,26 +75,37 @@ else:
         ]
 
     with st.sidebar:
-        st.markdown(f"## 💾 **Email Forensics**")
+        st.markdown("<h2>💾 Email Forensics</h2>", unsafe_allow_html=True)
         st.caption(f"Logged in as: `{st.session_state.get('user', 'Unknown')}` ({st.session_state.user_role})")
-        if st.button("🚪 Log Out"):
+        
+        if st.button("🚪 Log Out", use_container_width=True):
             st.session_state.logged_in = False
             st.session_state.user_role = None
             st.session_state.user = None
             st.rerun()
+            
         st.divider()
+        st.markdown("### 🧭 Navigation")
         
         if st.session_state.current_page not in nav_options:
             st.session_state.current_page = nav_options[0]
 
-        active_index = nav_options.index(st.session_state.current_page)
+        # Generate proper app-style buttons instead of a radio menu
+        for page in nav_options:
+            is_active = (st.session_state.current_page == page)
+            if st.button(page, type="primary" if is_active else "secondary", use_container_width=True):
+                st.session_state.current_page = page
+                st.rerun()
+                
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        st.divider()
+        st.caption("🟢 **System Status:** Online")
         
-        selected_page = st.radio(
-            "Navigation Engine", 
-            nav_options,
-            index=active_index
-        )
-        st.session_state.current_page = selected_page
+        # Interactive Dev Mode Toggle (ADD THIS HERE)
+        dev_mode_toggle = st.toggle("🛠️ Dev Mode (Hide UI)", value=st.session_state.get("dev_mode", False))
+        if dev_mode_toggle != st.session_state.get("dev_mode", False):
+            st.session_state.dev_mode = dev_mode_toggle
+            st.rerun()
 
     # Route according to active page
     if st.session_state.current_page == "🏠 Main Dashboard":
