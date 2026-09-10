@@ -1,0 +1,26 @@
+From: Vendor Invoicing <no-reply@vendor-billing-update.com>
+To: accounts@yourorg.com
+Subject: OVERDUE: Invoice #99482
+Date: Thu, 10 Sep 2026 07:50:28 +0530
+Message-ID: <178900682814.18588.15944551058751467215@ADARSH>
+Received: from mail.server.com ([103.45.67.89]) by mx.yourorg.com with ESMTP
+ id 12345; Thu, 10 Sep 2026 07:50:28 +0530
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="===============0548261308211291170=="
+
+--===============0548261308211291170==
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Your account is past due. Please review the attached invoice immediately to a=
+void service suspension.
+
+--===============0548261308211291170==
+Content-Type: application/octet-stream
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="invoice_99482.pdf.exe"
+MIME-Version: 1.0
+
+TVqQAAMAAAAEAAAA//8AAA==
+
+--===============0548261308211291170==--

@@ -9,7 +9,12 @@ from ui.workbench import render_workbench
 from ui.ledger import render_ledger
 from ui.settings import render_settings
 
-st.set_page_config(page_title="Email Forensics Platform", page_icon="💾", layout="wide")
+st.set_page_config(
+    page_title="Email Forensics Platform", 
+    page_icon="💾", 
+    layout="wide", 
+    initial_sidebar_state="expanded"  # <-- ADD THIS
+)
 
 st.markdown("""
     <style>
@@ -34,13 +39,13 @@ if "tz_pref" not in st.session_state:
     st.session_state.tz_pref = "UTC"
 
 # --- GLOBAL UI CONCEALMENT ---
-if not st.session_state.get("dev_mode", False):
-    st.markdown("""
-        <style>
-            #MainMenu {visibility: hidden;}
-            [data-testid="stToolbar"] {visibility: hidden;}
-        </style>
-    """, unsafe_allow_html=True)
+#if not st.session_state.get("dev_mode", False):
+#    st.markdown("""
+#        <style>
+#            #MainMenu {visibility: hidden;}
+#            [data-testid="stToolbar"] {visibility: hidden;}
+#        </style>
+#    """, unsafe_allow_html=True)
 
 # --- Routing Engine ---
 if not st.session_state.logged_in:
