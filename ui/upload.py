@@ -1,6 +1,5 @@
 # --- ui/upload.py ---
 import os
-import time
 import hashlib
 import re
 import streamlit as st
@@ -23,7 +22,6 @@ os.makedirs(SPOOL_DIR, exist_ok=True)
 def validate_rfc_structure(file_bytes: bytes) -> tuple[bool, str]:
     if not file_bytes or len(file_bytes.strip()) == 0:
         return False, "File is completely empty (0 bytes)."
-
     try:
         msg = email.message_from_bytes(file_bytes, policy=policy.default)
     except Exception as e:
@@ -32,32 +30,41 @@ def validate_rfc_structure(file_bytes: bytes) -> tuple[bool, str]:
     from_header = msg.get("From", "")
     if not from_header:
         return False, "Corrupted EML: Missing mandatory 'From' header."
-
     if "@" not in from_header or not re.search(r"[\w.-]+@[\w.-]+", from_header):
         return False, f"Corrupted EML: 'From' header contains no valid email address."
 
     rfc_markers = ["Date", "Subject", "Message-ID", "Received"]
     if not [m for m in rfc_markers if msg.get(m)]:
         return False, "Corrupted EML: Lacks standard RFC routing headers."
-
     return True, "Valid"
 
-def process_raw_eml_bytes(file_name: str, f_bytes: bytes, cursor) -> tuple[bool, str, dict]:
+def process_raw_eml_bytes(file_name: str, f_bytes: bytes) -> tuple[bool, str, dict]:
     f_hash = hashlib.sha256(f_bytes).hexdigest()
 
+    # --- MICRO-TRANSACTION 1: Read-Only Checks ---
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
     cursor.execute("SELECT id FROM rejected_files WHERE sha256 = ?", (f_hash,))
     if cursor.fetchone():
+        conn.close()
         return False, "DUPLICATE_REJECTED", {"error": "Already in Rejected Ledger."}
 
     is_valid, reason = validate_rfc_structure(f_bytes)
     if not is_valid:
         cursor.execute("INSERT INTO rejected_files (file_name, sha256, rejection_reason) VALUES (?, ?, ?)", (file_name, f_hash, reason))
+        conn.commit()
+        conn.close()
         return False, "INVALID_RFC", {"error": reason}
 
     cursor.execute("SELECT case_id FROM cases WHERE sha256 = ?", (f_hash,))
     existing = cursor.fetchone()
     case_id = existing["case_id"] if existing else f"CASE-{hashlib.md5(f_bytes).hexdigest()[:6].upper()}"
+    
+    # CRITICAL: Close the database completely before starting AI tasks
+    conn.close() 
 
+    # --- HEAVY AI INFERENCE (Database is safely closed) ---
     decomp = parse_step1_headers(f_bytes)
     sender = decomp["headers"].get("From", "Unknown")
     orig_ip = decomp["origin_candidate"].get("ip", "")
@@ -100,6 +107,10 @@ def process_raw_eml_bytes(file_name: str, f_bytes: bytes, cursor) -> tuple[bool,
     telemetry_str = json.dumps(telemetry_package)
     ai_notes_text = ai_summary_text
 
+    # --- MICRO-TRANSACTION 2: Write Results ---
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
     if not existing:
         cursor.execute("""
             INSERT INTO cases (case_id, file_name, sha256, sender, subject, origin_ip, risk_score, status, telemetry, ai_notes)
@@ -111,6 +122,9 @@ def process_raw_eml_bytes(file_name: str, f_bytes: bytes, cursor) -> tuple[bool,
             SET risk_score = ?, status = ?, telemetry = ?, ai_notes = ?, last_analyzed = CURRENT_TIMESTAMP
             WHERE case_id = ?
         """, (final_risk, status_label, telemetry_str, ai_notes_text, case_id))
+
+    conn.commit()
+    conn.close()
 
     return True, case_id, {
         "case_id": case_id, "file_name": file_name, "hash": f_hash,
@@ -129,11 +143,10 @@ def show_error_popup(errors_list):
 
 def render_upload():
     st.markdown("<h2>Forensic Ingestion Engine</h2>", unsafe_allow_html=True)
-    st.caption("RFC 5322 Ingestion Pipeline supporting ad-hoc investigations and automated spool ingestion.")
+    st.caption("RFC 5322 Ingestion Pipeline supporting ad-hoc investigations and live monitoring.")
 
-    tab_manual, tab_live = st.tabs(["📤 Ad-Hoc Manual Upload", "⚡ Live Spool Watchdog"])
+    tab_manual, tab_live = st.tabs(["📤 Ad-Hoc Manual Upload", "📡 Live Spool Viewer"])
 
-    # --- TAB 1: MANUAL AD-HOC UPLOAD ---
     with tab_manual:
         st.write("Upload specific `.eml` files flagged by employees or external alerts for immediate triage.")
         uploaded_files = st.file_uploader("Drop investigative case files here", type=["eml"], accept_multiple_files=True, key="manual_uploader")
@@ -145,16 +158,14 @@ def render_upload():
 
             total_files = len(uploaded_files)
             progress_bar = st.progress(0, text="Initializing ingestion sandbox...")
-            
-            conn = get_db_connection()
-            cursor = conn.cursor()
             success_cases, errors = [], []
 
             for idx, uf in enumerate(uploaded_files):
                 progress_bar.progress((idx) / total_files, text=f"Inspecting '{uf.name}' ({idx + 1}/{total_files})...")
                 try:
                     f_bytes = uf.read()
-                    ok, cid_or_reason, data = process_raw_eml_bytes(uf.name, f_bytes, cursor)
+                    # The function now handles its own database connection seamlessly
+                    ok, cid_or_reason, data = process_raw_eml_bytes(uf.name, f_bytes)
                     if ok:
                         st.session_state.analyzed_store[cid_or_reason] = data
                         success_cases.append(cid_or_reason)
@@ -163,8 +174,6 @@ def render_upload():
                 except Exception as e:
                     errors.append(f"💥 **Fatal Error on '{uf.name}'**: {str(e)}")
 
-            conn.commit()
-            conn.close()
             progress_bar.empty()
 
             if success_cases:
@@ -176,56 +185,23 @@ def render_upload():
             elif success_cases:
                 st.rerun()
 
-    # --- TAB 2: LIVE AUTOMATED WATCHDOG ---
     with tab_live:
-        st.write("Continuously monitor the server inbox spool (`inbox_spool/`) and ingest real-time traffic.")
+        st.write("Monitor raw `.eml` files generated by the simulator before they are processed.")
         
-        # The true automation toggle
-        auto_mode = st.toggle("🤖 Enable Continuous Auto-Ingestion Daemon", value=st.session_state.get("auto_ingest", False))
-        if auto_mode != st.session_state.get("auto_ingest", False):
-            st.session_state.auto_ingest = auto_mode
-            st.rerun()
-            
         pending_files = [f for f in os.listdir(SPOOL_DIR) if f.endswith(".eml")]
-        col1, col2 = st.columns([2, 1])
-        col1.metric("Pending Ingestion Spool", f"{len(pending_files)} files")
+        st.metric("Files Awaiting Ingestion", len(pending_files))
         
-        # Scenario A: Watchdog is ON
-        if st.session_state.get("auto_ingest", False):
-            if pending_files:
-                st.warning(f"🚨 Anomalous traffic detected! Auto-ingesting {len(pending_files)} files...")
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                
-                for fname in pending_files:
+        if pending_files:
+            for fname in pending_files:
+                with st.expander(f"📄 {fname}"):
                     fpath = os.path.join(SPOOL_DIR, fname)
                     try:
-                        with open(fpath, "rb") as f:
-                            f_bytes = f.read()
-                        
-                        ok, cid, data = process_raw_eml_bytes(fname, f_bytes, cursor)
-                        if ok:
-                            st.session_state.analyzed_store[cid] = data
-                        
-                        # Purge from spool immediately
-                        os.remove(fpath)
-                    except Exception as err:
-                        print(f"Watchdog failure on {fname}: {err}")
-
-                conn.commit()
-                conn.close()
-                st.success("Ingestion complete. Resuming patrol...")
-                time.sleep(2) # Give the user a moment to read the success message
-                st.rerun() # Refresh to clear the queue
-            else:
-                with st.spinner("📡 Listening for incoming traffic..."):
-                    time.sleep(3) # Wait 3 seconds before checking the folder again
-                    st.rerun()
-        
-        # Scenario B: Watchdog is OFF (Manual override)
+                        with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                            st.code(f.read(), language="email")
+                    except Exception as e:
+                        st.error(f"Cannot read file: {e}")
         else:
-            if pending_files:
-                st.info("Files are waiting in the spool. Enable the Auto-Ingestion Daemon or process them manually.")
-                if st.button("📥 Manual Ingest Pending Queue"):
-                    st.session_state.auto_ingest = True # Temporarily flip it on to trigger the loop
-                    st.rerun()
+            if st.session_state.get("auto_ingest", False):
+                st.success("✅ Spool is clean. The Auto-Ingestion Daemon is actively processing incoming traffic.")
+            else:
+                st.info("Spool is currently empty. Run `traffic_simulator.py` to generate test cases.")

@@ -7,6 +7,9 @@ import email.utils
 import torch
 from logic.ai_agent import get_qwen
 
+import warnings
+warnings.filterwarnings("ignore", message=".*missing ScriptRunContext.*")
+
 SPOOL_DIR = "inbox_spool"
 MAX_SPOOL_SIZE = 50 # Prevents the simulator from filling up your hard drive
 os.makedirs(SPOOL_DIR, exist_ok=True)
