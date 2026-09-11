@@ -25,3 +25,7 @@ test_emails/*
 
 Case Reports/*
 !Case Reports/.gitkeep
+
+# SQLite Databases
+*.db
+*.sqlite3

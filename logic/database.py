@@ -1,4 +1,5 @@
 import sqlite3
+import os
 
 DB_PATH = "forensics.db"
 
@@ -23,7 +24,6 @@ def init_db():
             notes TEXT
         )
     """)
-    # ... existing cases table creation ...
     try: cursor.execute("ALTER TABLE cases ADD COLUMN telemetry TEXT")
     except sqlite3.OperationalError: pass
     try: 
@@ -40,7 +40,7 @@ def init_db():
     except sqlite3.OperationalError: pass
     # ------------------------------------------------------------
 
-    # 2. Personnel Table (Replaces Employees)
+    # 2. Personnel Table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS personnel (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -105,14 +105,17 @@ def init_db():
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    
 
     conn.commit()
     conn.close()
 
 def get_db_connection():
+    # --- NEW CHECK: Auto-Initialize if missing ---
+    if not os.path.exists(DB_PATH):
+        init_db()
+        
     # Increased timeout to 20 seconds so it waits instead of crashing
-    conn = sqlite3.connect("forensics.db", timeout=20) 
+    conn = sqlite3.connect(DB_PATH, timeout=20) 
     # Enable Write-Ahead Logging for concurrent reading/writing
     conn.execute("PRAGMA journal_mode=WAL") 
     conn.row_factory = sqlite3.Row

@@ -25,12 +25,6 @@ def clean_text(text: Any) -> str:
     text = text.replace("<", "&lt;").replace(">", "&gt;")
     return text.strip()
 
-def force_wrap(text: str, width: int = 85) -> str:
-    """Forces extremely long spaceless strings (URLs) to break using ReportLab's <br/> tag."""
-    if not text:
-        return ""
-    return "<br/>".join([text[i:i+width] for i in range(0, len(text), width)])
-
 def generate_case_pdf(case_data: Dict[str, Any]) -> str:
     """Generates a highly polished, tabular DFIR PDF report."""
     if not isinstance(case_data, dict):
@@ -45,7 +39,6 @@ def generate_case_pdf(case_data: Dict[str, Any]) -> str:
     file_path = os.path.abspath(os.path.join("Case Reports", file_name))
 
     # --- DOCUMENT INITIALIZATION ---
-    # A4 width is ~595 points. With 30pt margins, we have 535 points of usable width.
     doc = SimpleDocTemplate(file_path, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     styles = getSampleStyleSheet()
     
@@ -68,20 +61,29 @@ def generate_case_pdf(case_data: Dict[str, Any]) -> str:
     normal_style.fontSize = 10
     normal_style.leading = 14
     
-    # Custom style for raw URLs and hashes to make them look like code
-    code_style = ParagraphStyle('Code', parent=normal_style, fontName="Courier", fontSize=8.5, leading=10, textColor=colors.HexColor("#b91c1c"))
+    # --- THE MAGIC FIX: wordWrap='CJK' forces character-level wrapping without inserting newlines ---
+    code_style = ParagraphStyle(
+        'Code', 
+        parent=normal_style, 
+        fontName="Courier", 
+        fontSize=8.5, 
+        leading=10, 
+        textColor=colors.HexColor("#b91c1c"),
+        wordWrap='CJK' 
+    )
+    
     bullet_style = ParagraphStyle('Bullet', parent=normal_style, leftIndent=15)
 
     # Standard Table Design
     standard_table_style = TableStyle([
-        ('BACKGROUND', (0,0), (0,-1), colors.HexColor("#f8fafc")), # Light gray key column
-        ('TEXTCOLOR', (0,0), (0,-1), colors.HexColor("#0f172a")),  # Dark text
-        ('FONTNAME', (0,0), (0,-1), 'Helvetica-Bold'),             # Bold keys
+        ('BACKGROUND', (0,0), (0,-1), colors.HexColor("#f8fafc")), 
+        ('TEXTCOLOR', (0,0), (0,-1), colors.HexColor("#0f172a")),  
+        ('FONTNAME', (0,0), (0,-1), 'Helvetica-Bold'),             
         ('ALIGN', (0,0), (-1,-1), 'LEFT'),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('BOTTOMPADDING', (0,0), (-1,-1), 8),
         ('TOPPADDING', (0,0), (-1,-1), 8),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1"))  # Clean grid lines
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1"))  
     ])
 
     elements = []
@@ -95,7 +97,8 @@ def generate_case_pdf(case_data: Dict[str, Any]) -> str:
     
     overview_data = [
         ["Case Identifier", clean_text(case_id)],
-        ["Artifact File Name", Paragraph(clean_text(case_data.get('file_name')), normal_style)],
+        # We apply the CJK wrap style to filenames and hashes just in case they are massive
+        ["Artifact File Name", Paragraph(clean_text(case_data.get('file_name')), code_style)],
         ["SHA256 Checksum", Paragraph(clean_text(case_data.get('hash')), code_style)],
         ["Threat Status", f"{clean_text(case_data.get('status'))} (Risk Score: {case_data.get('risk_score', 0)}/100)"]
     ]
@@ -107,11 +110,10 @@ def generate_case_pdf(case_data: Dict[str, Any]) -> str:
     elements.append(Paragraph("2. Executive Threat Briefing", header_style))
     ai_insight = clean_text(case_data.get('ai_insight', 'No summary available.'))
     
-    # Put the AI insight inside a shaded alert box
     insight_data = [[Paragraph(ai_insight, normal_style)]]
     t2 = Table(insight_data, colWidths=[535])
     t2.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#f0fdf4")), # Very light green/gray
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#f0fdf4")), 
         ('BORDER', (0,0), (-1,-1), 1, colors.HexColor("#bbf7d0")),
         ('PADDING', (0,0), (-1,-1), 10)
     ]))
@@ -153,32 +155,33 @@ def generate_case_pdf(case_data: Dict[str, Any]) -> str:
     
     decomp = case_data.get("decomp") or {}
     
-    # Keywords
     heur = case_data.get("heur") or {}
     keywords_raw = clean_text(', '.join(heur.get('keywords', []) or []))
     if keywords_raw:
-        elements.append(Paragraph(f"<b>Trigger Keywords:</b> {keywords_raw}", normal_style))
+        # Applying CJK wrap style here so a massive wall of keywords wraps naturally
+        elements.append(Paragraph(f"<b>Trigger Keywords:</b> {keywords_raw}", code_style))
         elements.append(Spacer(1, 8))
 
-    # Attachments
     attachments = decomp.get("attachments") or []
     if attachments:
         elements.append(Paragraph(f"<b>Attached Payloads Detected ({len(attachments)}):</b>", normal_style))
         for att in attachments:
             if isinstance(att, dict):
                 att_str = clean_text(f"{att.get('filename')} ({att.get('size_kb')} KB) | SHA256: {att.get('sha256')}")
-                elements.append(Paragraph(f"• {force_wrap(att_str)}", code_style))
+                elements.append(Paragraph(f"• {att_str}", code_style))
     else:
         elements.append(Paragraph("<b>Attached Payloads:</b> None detected.", normal_style))
     
     elements.append(Spacer(1, 8))
     
-    # URLs (Using the Code style for monospace rendering)
     urls = heur.get("urls") or []
     if urls:
         elements.append(Paragraph(f"<b>Extracted URLs ({len(urls)}):</b>", normal_style))
         for url in urls[:5]:
-            elements.append(Paragraph(f"• {force_wrap(clean_text(url))}", code_style))
+            safe_url = clean_text(url)
+            # Embedding the raw URL inside a hyperlink tag. 
+            # The 'code_style' ensures it wraps cleanly on-screen but copies as a single line!
+            elements.append(Paragraph(f"• <a href='{safe_url}' color='#b91c1c'>{safe_url}</a>", code_style))
     else:
         elements.append(Paragraph("<b>Extracted URLs:</b> None detected.", normal_style))
 
