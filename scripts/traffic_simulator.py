@@ -1,20 +1,22 @@
 # scripts/traffic_simulator.py
 import sys
 import os
+import signal
+import time
+import random
+import email.message
+import email.utils
+import warnings
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(PROJECT_ROOT)
 os.chdir(PROJECT_ROOT)
 
-import time
-import random
-import email.message
-import email.utils
+warnings.filterwarnings("ignore", message=".*missing ScriptRunContext.*")
+
 import torch
 from logic.ai_agent import get_qwen
 
-import warnings
-warnings.filterwarnings("ignore", message=".*missing ScriptRunContext.*")
 
 SPOOL_DIR = "inbox_spool"
 MAX_SPOOL_SIZE = 50 
@@ -26,7 +28,19 @@ EMPLOYEES = ["vikram.sharma@yourorg.com", "sneha.patel@yourorg.com", "finance-de
 print("=" * 60)
 print("🚀 Booting Live Enterprise Traffic Simulator...")
 print("🧠 Loading Qwen 1.5B for dynamic threat generation...")
+print("⚠️  Press Ctrl+C to initiate a safe shutdown sequence.")
 print("=" * 60)
+
+# --- SAFE SHUTDOWN LOGIC ---
+shutdown_requested = False
+
+def safe_shutdown(signum, frame):
+    global shutdown_requested
+    print("\n\n[!] Shutdown signal received. Finishing current file before exiting...")
+    shutdown_requested = True
+
+signal.signal(signal.SIGINT, safe_shutdown)
+# ---------------------------
 
 agent = get_qwen()
 
@@ -35,14 +49,15 @@ def generate_ai_lure(topic: str) -> str:
     
     device = "cuda" if torch.cuda.is_available() else "cpu"
     inputs = agent.tokenizer(prompt, return_tensors="pt").to(device)
-    outputs = agent.model.generate(**inputs, max_new_tokens=60, temperature=0.8)
+    # Added do_sample=True to prevent transformers crashing on temperature arguments
+    outputs = agent.model.generate(**inputs, max_new_tokens=60, temperature=0.8, do_sample=True)
     
     input_length = inputs.input_ids.shape[1]
     return agent.tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True).strip()
 
 def run_simulator():
     case_number = 1
-    while True:
+    while not shutdown_requested:
         current_files = len([f for f in os.listdir(SPOOL_DIR) if f.endswith('.eml')])
         if current_files >= MAX_SPOOL_SIZE:
             print(f"⏸️  Spool full ({MAX_SPOOL_SIZE}/{MAX_SPOOL_SIZE}). Waiting for platform ingestion...")
@@ -80,7 +95,15 @@ def run_simulator():
             
         print(f"✅ Dispatched: {filename} ({current_files + 1}/{MAX_SPOOL_SIZE})")
         case_number += 1
-        time.sleep(random.randint(10, 30))
+        
+        # Responsive Sleep: Checks for shutdown every 1 second instead of freezing for 30s
+        sleep_time = random.randint(10, 30)
+        for _ in range(sleep_time):
+            if shutdown_requested:
+                break
+            time.sleep(1)
+
+    print("[✓] Traffic Simulator successfully terminated.")
 
 if __name__ == "__main__":
     run_simulator()
