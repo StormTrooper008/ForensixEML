@@ -1,5 +1,11 @@
-# ingestion_daemon.py
+# scripts/ingestion_daemon.py
+import sys
 import os
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(PROJECT_ROOT)
+os.chdir(PROJECT_ROOT) # Forces execution context to the root directory
+
 import time
 import warnings
 warnings.filterwarnings("ignore", message=".*missing ScriptRunContext.*")
@@ -24,7 +30,6 @@ def run_daemon():
                     
                     print(f"[*] Analyzing AI for: {fname} (This may take a few seconds)...")
                     
-                    # No connection passed here; process_raw_eml_bytes handles DB safely
                     ok, cid, data = process_raw_eml_bytes(fname, f_bytes)
                     
                     if ok:

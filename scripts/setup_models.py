@@ -1,10 +1,11 @@
-"""
-Air-Gapped Threat Detection Platform - Model Downloader
-Downloads local transformer weights required for offline inference.
-"""
-
-import os
+# scripts/setup_models.py
 import sys
+import os
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(PROJECT_ROOT)
+os.chdir(PROJECT_ROOT)
+
 from huggingface_hub import snapshot_download
 
 MODELS = [
@@ -25,25 +26,19 @@ def download_all_models():
     print("Initializing Local AI Ensemble Model Ingestion")
     print("=" * 60)
     
-    # 1. Storage Warning & Confirmation Prompt
     print("⚠️  STORAGE WARNING: This process will download approximately 5 GB of neural network weights to your local machine.")
     print("This ensures 100% air-gapped, offline operation for the threat detection platform.\n")
+    print("[!] WARNING: The DistilBERT model that will be downloaded is a base/untrained version. It must be fine-tuned externally on your dataset before production use.")
     
     choice = input("Do you have enough disk space and wish to proceed? (y/n): ").strip().lower()
     
-    # 2. Abort Logic
     if choice not in ['y', 'yes']:
-        print("\n[!] Download aborted by user. You can run this script later when space is available.")
+        print("\n[!] Download aborted by user.")
         sys.exit(0)
 
-    # 3. Execution Logic
     for item in MODELS:
         print(f"\n[+] Fetching {item['description']}...")
-        print(f"    Source : {item['repo_id']}")
-        print(f"    Target : {item['local_dir']}")
-        
         os.makedirs(item['local_dir'], exist_ok=True)
-        
         try:
             snapshot_download(
                 repo_id=item["repo_id"],

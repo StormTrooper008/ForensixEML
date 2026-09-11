@@ -4,14 +4,16 @@ Batch Forensic EML Generator (50 Synthetic Cases)
 Generates 50 varied RFC 5322 compliant emails covering multiple threat vectors,
 benign traffic, and multi-incident campaign clusters.
 """
-
+import sys
 import os
+# Forces Python to recognize the parent directory as the project root
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import random
 import hashlib
 import email.message
 import email.utils
 
-OUTPUT_DIR = "test_emails_50"
+OUTPUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'test_emails', 'v50'))
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # ---------------------------------------------------------

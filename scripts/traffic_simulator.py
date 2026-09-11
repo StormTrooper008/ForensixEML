@@ -1,5 +1,11 @@
-# traffic_simulator.py
+# scripts/traffic_simulator.py
+import sys
 import os
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(PROJECT_ROOT)
+os.chdir(PROJECT_ROOT)
+
 import time
 import random
 import email.message
@@ -11,7 +17,7 @@ import warnings
 warnings.filterwarnings("ignore", message=".*missing ScriptRunContext.*")
 
 SPOOL_DIR = "inbox_spool"
-MAX_SPOOL_SIZE = 50 # Prevents the simulator from filling up your hard drive
+MAX_SPOOL_SIZE = 50 
 os.makedirs(SPOOL_DIR, exist_ok=True)
 
 CAMPAIGN_IPS = ["185.220.101.5", "91.240.118.172", "103.145.12.89"]
@@ -26,17 +32,17 @@ agent = get_qwen()
 
 def generate_ai_lure(topic: str) -> str:
     prompt = f"<|im_start|>system\nYou are a red-team operator writing a realistic, 2-sentence phishing email body. Do not include subject lines or headers.<|im_end|>\n<|im_start|>user\nWrite a short, urgent email about: {topic}<|im_end|>\n<|im_start|>assistant\n"
+    
     device = "cuda" if torch.cuda.is_available() else "cpu"
     inputs = agent.tokenizer(prompt, return_tensors="pt").to(device)
     outputs = agent.model.generate(**inputs, max_new_tokens=60, temperature=0.8)
+    
     input_length = inputs.input_ids.shape[1]
     return agent.tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True).strip()
 
 def run_simulator():
     case_number = 1
-    
     while True:
-        # --- Storage Protection (Backpressure) ---
         current_files = len([f for f in os.listdir(SPOOL_DIR) if f.endswith('.eml')])
         if current_files >= MAX_SPOOL_SIZE:
             print(f"⏸️  Spool full ({MAX_SPOOL_SIZE}/{MAX_SPOOL_SIZE}). Waiting for platform ingestion...")
@@ -53,7 +59,6 @@ def run_simulator():
             topic = random.choice(["an overdue invoice", "mandatory HR compliance", "password expiry"])
             print(f"[!] Generating AI Attack Lure: {topic}...")
             body = generate_ai_lure(topic)
-            
             origin_ip = random.choice(CAMPAIGN_IPS) if random.random() < 0.7 else f"{random.randint(11,210)}.{random.randint(1,254)}.1.1"
             msg['From'] = '"Admin Alert" <security@trusted-update.local>'
             msg['Subject'] = f"ACTION REQUIRED: {topic.title()}"
@@ -75,9 +80,7 @@ def run_simulator():
             
         print(f"✅ Dispatched: {filename} ({current_files + 1}/{MAX_SPOOL_SIZE})")
         case_number += 1
-        
-        sleep_time = random.randint(10, 30)
-        time.sleep(sleep_time)
+        time.sleep(random.randint(10, 30))
 
 if __name__ == "__main__":
     run_simulator()

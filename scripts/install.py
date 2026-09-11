@@ -3,24 +3,27 @@
 # .\.venv\Scripts\activate
 # python install.py
 
+# scripts/install.py
 import subprocess
 import sys
 import os
 import shutil
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(PROJECT_ROOT)
+os.chdir(PROJECT_ROOT)
 
 def run_setup():
     print("=" * 60)
     print("Email Threat Detection Platform - Unified Installer")
     print("=" * 60)
 
-    # 1. Hardware Detection
     has_gpu = shutil.which("nvidia-smi") is not None
     default_choice = "y" if has_gpu else "n"
     
     print(f"[!] Hardware check: {'NVIDIA GPU detected' if has_gpu else 'No dedicated NVIDIA GPU found'}.")
     choice = input(f"Enable CUDA GPU acceleration? (y/n) [Default: {default_choice}]: ").strip().lower() or default_choice
 
-    # 2. PyTorch Hardware Selection
     if choice in ["y", "yes"]:
         print("\n[+] Installing CUDA 12.4 PyTorch wheels...")
         subprocess.check_call([
@@ -35,14 +38,13 @@ def run_setup():
             "torch", "torchvision"
         ])
 
-    # 3. Core Platform Dependencies
     print("\n[+] Installing platform dependencies from requirements.txt...")
+    # Because of os.chdir, pip correctly finds the requirements.txt in the root directory
     subprocess.check_call([
         sys.executable, "-m", "pip", "install", "-r", "requirements.txt"
     ])
 
-    # 4. Air-Gapped Model Check
-    models_dir = os.path.join(os.path.dirname(__file__), "models")
+    models_dir = os.path.join("models")
     has_models = os.path.exists(models_dir) and len(os.listdir(models_dir)) > 0
 
     if not has_models:
@@ -51,10 +53,7 @@ def run_setup():
         print("=" * 60)
         dl_choice = input("Download required local models now (DistilBERT & Qwen 1.5B)? (y/n) [y]: ").strip().lower() or "y"
         if dl_choice in ["y", "yes"]:
-            setup_script = os.path.join("tools", "setup_models.py")
-            if not os.path.exists(setup_script):
-                setup_script = "setup_models.py"
-            subprocess.check_call([sys.executable, setup_script])
+            subprocess.check_call([sys.executable, os.path.join("scripts", "setup_models.py")])
         else:
             print("[!] Skipping model download. NLP classification will remain disabled until models exist.")
 

@@ -1,10 +1,13 @@
 # generate_test_cases.py
+import sys
 import os
+# Forces Python to recognize the parent directory as the project root
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import email.message
 import email.utils
 import time
 
-OUTPUT_DIR = "test_emails"
+OUTPUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'test_emails', 'v50'))
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 def create_eml(filename, sender, to, subject, body, origin_ip, attachment_name=None, attachment_payload=None):
