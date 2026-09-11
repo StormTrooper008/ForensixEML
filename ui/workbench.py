@@ -40,9 +40,7 @@ def render_workbench():
         st.info("📭 Inbox is empty. Start the Auto-Ingestion Daemon or upload files to see data here.")
         return
 
-    # --- INTELLIGENT CASE SELECTION & RETENTION ---
     active_case_id = st.session_state.get("selected_case")
-    
     case_ids = [c['case_id'] for c in cases]
     
     if active_case_id and active_case_id not in case_ids:
@@ -61,12 +59,8 @@ def render_workbench():
         active_case_id = cases[0]['case_id']
         st.session_state.selected_case = active_case_id
 
-    # --- Dual Pane Layout (1:2.2 Ratio) ---
     col_list, col_details = st.columns([1, 2.2])
     
-    # -----------------------------------------
-    # LEFT PANE: The Inbox List (Scrollable)
-    # -----------------------------------------
     with col_list:
         st.markdown("#### 📥 Live Traffic")
         with st.container(height=800):
@@ -99,9 +93,6 @@ def render_workbench():
                             st.session_state.selected_case = c['case_id']
                             st.rerun()
 
-    # -----------------------------------------
-    # RIGHT PANE: The Forensic Dossier
-    # -----------------------------------------
     with col_details:
         selected = next((c for c in cases if c['case_id'] == active_case_id), None)
         
@@ -121,7 +112,6 @@ def render_workbench():
                 "intel": telemetry.get("intel", {})
             }
             
-            # --- PRE-COMPUTE EXACT AGE & REGISTRAR FOR UI AND PDF EXPORT ---
             intel_data = data["intel"]
             whois_data = intel_data.get("domain_whois", {})
             
@@ -139,11 +129,8 @@ def render_workbench():
                     whois_data["age_display"] = "Unknown"
                 
                 whois_data["registrar_full"] = str(whois_data.get("registrar", "Unknown"))
-                
-                # Write back into data dictionary so PDF Exporter catches the new keys
                 data["intel"]["domain_whois"] = whois_data
 
-            # --- PDF EXPORT & LOCAL PATH BLOCK ---
             col1, col2 = st.columns([2.5, 1.5])
             with col1:
                 st.write(f"**Investigating:** `{data['file_name']}` | **SHA256:** `{data['hash']}`")
@@ -162,8 +149,16 @@ def render_workbench():
                 st.code(st.session_state[report_key], language="text")
 
             st.divider()
+
+            # --- THE MISSING AI SUMMARY UI BLOCK ---
+            if data["ai_insight"]:
+                st.info(f"**🤖 AI Threat Briefing**\n\n{data['ai_insight']}")
+            else:
+                st.warning("⚠️ No AI summary was generated during the ingestion phase for this case.")
             
-            # --- THE 6 TABS ---
+            st.write("") # Spacer
+            # ----------------------------------------
+            
             t1, t2, t3, t4, t5, t6 = st.tabs(["Headers & Body", "Authentication", "Geo Map", "Threat Intel", "📎 Attachments", "🛤️ Trace Map"])
 
             with t1:
@@ -262,17 +257,15 @@ def render_workbench():
                     if whois_data.get("status") == "CACHED":
                         st.caption("💾 *Data loaded from local offline cache.*")
                     
-                    # --- NEW CUSTOM HTML METRICS BLOCK ---
                     col_w1, col_w2, col_w3 = st.columns(3)
                     
-                    # Using CSS to enforce a smaller font size and break long URLs naturally
                     label_style = "font-size: 14px; opacity: 0.8; margin-bottom: 2px;"
                     val_style = "font-size: 1.2rem; font-weight: bold; word-break: break-all; line-height: 1.2;"
                     
                     col_w1.markdown(f"<div><div style='{label_style}'>Domain Age</div><div style='{val_style}'>{whois_data.get('age_display', 'Unknown')}</div></div>", unsafe_allow_html=True)
                     col_w2.markdown(f"<div><div style='{label_style}'>Registrar</div><div style='{val_style}'>{whois_data.get('registrar_full', 'Unknown')}</div></div>", unsafe_allow_html=True)
                     col_w3.markdown(f"<div><div style='{label_style}'>Creation Date</div><div style='{val_style}'>{whois_data.get('creation_date', 'Unknown')}</div></div>", unsafe_allow_html=True)
-                    st.write("") # Adds a tiny spacer below the custom HTML block
+                    st.write("") 
                     
                     if whois_data.get("is_suspicious"):
                         st.error("🚨 **WARNING:** This domain was registered very recently. Massive red flag for disposable phishing infrastructure.")

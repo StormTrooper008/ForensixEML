@@ -3,6 +3,9 @@ import sys
 import os
 import signal
 
+import logging
+logging.getLogger("streamlit.runtime.scriptrunner_utils.script_run_context").setLevel(logging.ERROR)
+
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(PROJECT_ROOT)
 os.chdir(PROJECT_ROOT)

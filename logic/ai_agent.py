@@ -1,7 +1,7 @@
 # logic/ai_agent.py
 import json
 import torch
-import streamlit as st
+# import streamlit as st
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from typing import Dict, Any
 
@@ -66,9 +66,14 @@ Telemetry: {json.dumps(safe_telemetry)}<|im_end|>
             return f"❌ Qwen Generation Error: {str(e)}"
 
 # --- CACHE THE MODEL SO STREAMLIT DOESN'T FREEZE ON RELOAD ---
-@st.cache_resource(show_spinner="Waking up Qwen 1.5B AI Agent...")
+# --- REMOVE @st.cache_resource AND USE A GLOBAL SINGLETON INSTEAD ---
+_qwen_instance = None
+
 def get_qwen():
-    return LocalQwenExplainer()
+    global _qwen_instance
+    if _qwen_instance is None:
+        _qwen_instance = LocalQwenExplainer()
+    return _qwen_instance
 
 def generate_incident_summary(telemetry_data: Dict[str, Any]) -> Dict[str, Any]:
     summary_text = get_qwen().generate_summary(telemetry_data)
