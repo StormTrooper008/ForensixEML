@@ -9,6 +9,8 @@ from streamlit_folium import st_folium
 from logic.export import generate_case_pdf
 import pandas as pd
 from logic.database import get_db_connection
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
 
 def fetch_recent_cases(limit=50):
     """Fetches the latest ingested cases directly from the database for the live feed."""
@@ -41,12 +43,9 @@ def render_workbench():
     # --- INTELLIGENT CASE SELECTION & RETENTION ---
     active_case_id = st.session_state.get("selected_case")
     
-    # If the selected case isn't in our current list, check if it exists in the full DB 
-    # (in case the background daemon pushed it past the top 50 limit)
     case_ids = [c['case_id'] for c in cases]
     
     if active_case_id and active_case_id not in case_ids:
-        # Fetch that specific case directly so it doesn't get lost
         conn = get_db_connection()
         conn.row_factory = sqlite3.Row if hasattr(sqlite3, 'Row') else conn.row_factory
         cursor = conn.cursor()
@@ -55,11 +54,9 @@ def render_workbench():
         conn.close()
         
         if specific_case:
-            # Prepend it to our cases list so it renders in the UI
             cases.insert(0, dict(specific_case))
             case_ids.insert(0, active_case_id)
 
-    # Final fallback to newest if nothing is selected at all
     if not active_case_id or active_case_id not in case_ids:
         active_case_id = cases[0]['case_id']
         st.session_state.selected_case = active_case_id
@@ -86,7 +83,6 @@ def render_workbench():
                 
                 is_currently_selected = (c['case_id'] == active_case_id)
                 
-                # Render a container with a visual border highlight if it's the active case
                 with st.container(border=True):
                     if is_currently_selected:
                         st.markdown(f"👉 **`{c['case_id']}`** (Active)")
@@ -112,7 +108,7 @@ def render_workbench():
         if selected:
             telemetry = json.loads(selected['telemetry']) if selected['telemetry'] else {}
             data = {
-                "case_id": selected["case_id"], # <-- Added this so it's not UNKNOWN
+                "case_id": selected["case_id"], 
                 "file_name": selected["file_name"],
                 "hash": selected["sha256"],
                 "risk_score": selected["risk_score"],
@@ -125,6 +121,28 @@ def render_workbench():
                 "intel": telemetry.get("intel", {})
             }
             
+            # --- PRE-COMPUTE EXACT AGE & REGISTRAR FOR UI AND PDF EXPORT ---
+            intel_data = data["intel"]
+            whois_data = intel_data.get("domain_whois", {})
+            
+            if whois_data and not whois_data.get("error") and whois_data.get("status") != "OFFLINE":
+                creation_date_str = whois_data.get("creation_date", "Unknown")
+                if creation_date_str != "Unknown":
+                    try:
+                        creation_dt = datetime.strptime(creation_date_str[:10], "%Y-%m-%d")
+                        now = datetime.now()
+                        delta = relativedelta(now, creation_dt)
+                        whois_data["age_display"] = f"{delta.years}y {delta.months}m {delta.days}d"
+                    except Exception:
+                        whois_data["age_display"] = f"{whois_data.get('age_days', 'Unknown')} days"
+                else:
+                    whois_data["age_display"] = "Unknown"
+                
+                whois_data["registrar_full"] = str(whois_data.get("registrar", "Unknown"))
+                
+                # Write back into data dictionary so PDF Exporter catches the new keys
+                data["intel"]["domain_whois"] = whois_data
+
             # --- PDF EXPORT & LOCAL PATH BLOCK ---
             col1, col2 = st.columns([2.5, 1.5])
             with col1:
@@ -138,7 +156,6 @@ def render_workbench():
                     else:
                         st.error("Failed to generate local report.")
 
-            # Display path popup cleanly right under the header
             report_key = f"last_report_{active_case_id}"
             if st.session_state.get(report_key):
                 st.success("✨ Immutable Forensic PDF Report Generated & Saved Locally:")
@@ -234,12 +251,10 @@ def render_workbench():
 
             with t4:
                 heur_data = data.get("heur", {})
-                intel_data = data.get("intel", {})
                 st.metric("Total Heuristic & Intel Penalty", f"+ {heur_data.get('score', 0) + intel_data.get('penalty', 0)} points")
                 
                 st.divider()
                 st.subheader("🌍 Sender Domain Infrastructure (WHOIS/DNS)")
-                whois_data = intel_data.get("domain_whois", {})
                 
                 if whois_data.get("status") == "OFFLINE":
                     st.warning("📴 **Air-Gapped Mode Active:** The system is currently offline. Live domain reconnaissance is paused to prevent data leaks.")
@@ -247,10 +262,17 @@ def render_workbench():
                     if whois_data.get("status") == "CACHED":
                         st.caption("💾 *Data loaded from local offline cache.*")
                     
+                    # --- NEW CUSTOM HTML METRICS BLOCK ---
                     col_w1, col_w2, col_w3 = st.columns(3)
-                    col_w1.metric("Domain Age", f"{whois_data.get('age_days', 'Unknown')} days")
-                    col_w2.metric("Registrar", str(whois_data.get("registrar", "Unknown"))[:20])
-                    col_w3.metric("Creation Date", whois_data.get("creation_date", "Unknown"))
+                    
+                    # Using CSS to enforce a smaller font size and break long URLs naturally
+                    label_style = "font-size: 14px; opacity: 0.8; margin-bottom: 2px;"
+                    val_style = "font-size: 1.2rem; font-weight: bold; word-break: break-all; line-height: 1.2;"
+                    
+                    col_w1.markdown(f"<div><div style='{label_style}'>Domain Age</div><div style='{val_style}'>{whois_data.get('age_display', 'Unknown')}</div></div>", unsafe_allow_html=True)
+                    col_w2.markdown(f"<div><div style='{label_style}'>Registrar</div><div style='{val_style}'>{whois_data.get('registrar_full', 'Unknown')}</div></div>", unsafe_allow_html=True)
+                    col_w3.markdown(f"<div><div style='{label_style}'>Creation Date</div><div style='{val_style}'>{whois_data.get('creation_date', 'Unknown')}</div></div>", unsafe_allow_html=True)
+                    st.write("") # Adds a tiny spacer below the custom HTML block
                     
                     if whois_data.get("is_suspicious"):
                         st.error("🚨 **WARNING:** This domain was registered very recently. Massive red flag for disposable phishing infrastructure.")
