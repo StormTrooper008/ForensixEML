@@ -26,7 +26,7 @@ def download_all_models():
     print("Initializing Local AI Ensemble Model Ingestion")
     print("=" * 60)
     
-    print("⚠️  STORAGE WARNING: This process will download approximately 5 GB of neural network weights to your local machine.")
+    print("⚠️  STORAGE WARNING: This process will download approximately 4 GB of neural network weights to your local machine.")
     print("This ensures 100% air-gapped, offline operation for the threat detection platform.\n")
     print("[!] WARNING: The DistilBERT model that will be downloaded is a base/untrained version. It must be fine-tuned externally on your dataset before production use.")
     
