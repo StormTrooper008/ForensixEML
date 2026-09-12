@@ -76,7 +76,7 @@ System Settings: Navigate to the Settings tab to toggle the Automated Ingestion 
 > Due to GitHub's repository size limits, the pre-trained/fine-tuned weights for our local AI models (DistilBERT and Qwen) are not bundled directly in this repository. 
 > 
 > * **With AI Enabled:** The platform runs full semantic NLP threat narration and deep phishing classification.
-> * **Without AI (Fallback Mode):** If model weights are missing, the system gracefully defaults to its robust **deterministic engine**—relying entirely on header parsing, SPF/DKIM/DMARC authentication enforcement, MaxMind GeoIP telemetry, and rule-based regex heuristics to ensure uninterrupted forensic functionality.
+> * **Without AI (Fallback Mode):** If model weights are missing, the system defaults to its **deterministic scoring engine**—relying entirely on header parsing, SPF/DKIM/DMARC authentication enforcement, MaxMind GeoIP telemetry, and rule-based regex heuristics to ensure uninterrupted forensic functionality.
 
 ---
 # Fully Implemented (Production Baseline)
