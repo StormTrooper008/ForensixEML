@@ -70,9 +70,11 @@ System Settings: Navigate to the Settings tab to toggle the Automated Ingestion 
 
 * Navigate to the Upload & Ingest tab to manually drop .eml files for analysis.
 * If the traffic simulator is running, users can watch live .eml files being spooled and autonomously ingested by the AI.
+* Then navigate to Workbench to get a complete overview of the email analysed.
 
 ⚠️ IMPORTANT AI NOTICE: The local DistilBERT model downloaded during setup is a base/untrained NLP model. It requires fine-tuning on a curated dataset of benign promotional emails and actual phishing lures before production use to avoid false positives (e.g., flagging standard newsletters as threats). Datasets will be provided if and when available/possible.
 
+We are using a trained model but due to GitHub's size limits on uploads, we aren't able to upload that.
 ---
 # Fully Implemented (Production Baseline)
 * NLP Phishing & Urgency Detection: Local DistilBERT inference evaluating body text and subject lines.
