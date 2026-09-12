@@ -1,8 +1,3 @@
-# py -3.12 -m venv .venv
-# Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-# .\.venv\Scripts\activate
-# python install.py
-
 # scripts/install.py
 import subprocess
 import sys
@@ -18,10 +13,23 @@ def run_setup():
     print("Email Threat Detection Platform - Unified Installer")
     print("=" * 60)
 
+    # --- NEW STORAGE WARNING ---
+    print("\n⚠️  STORAGE WARNING:")
+    print("This installation requires significant disk space to ensure 100% offline, air-gapped capability:")
+    print("  • Platform Libraries (PyTorch CUDA wheels, dependencies): ~6.0 GB")
+    print("  • AI Model Weights (Qwen 1.5B & DistilBERT): ~4.0 GB")
+    print("  • Total Estimated Space Required: ~10.0 - 11.0 GB\n")
+
+    space_choice = input("Do you have enough disk space and wish to proceed? (y/n) [y]: ").strip().lower() or "y"
+    if space_choice not in ['y', 'yes']:
+        print("\n[!] Installation aborted by user. Please free up space and try again.")
+        sys.exit(0)
+    # ---------------------------
+
     has_gpu = shutil.which("nvidia-smi") is not None
     default_choice = "y" if has_gpu else "n"
     
-    print(f"[!] Hardware check: {'NVIDIA GPU detected' if has_gpu else 'No dedicated NVIDIA GPU found'}.")
+    print(f"\n[!] Hardware check: {'NVIDIA GPU detected' if has_gpu else 'No dedicated NVIDIA GPU found'}.")
     choice = input(f"Enable CUDA GPU acceleration? (y/n) [Default: {default_choice}]: ").strip().lower() or default_choice
 
     if choice in ["y", "yes"]:
