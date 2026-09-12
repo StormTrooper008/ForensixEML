@@ -72,9 +72,12 @@ System Settings: Navigate to the Settings tab to toggle the Automated Ingestion 
 * If the traffic simulator is running, users can watch live .eml files being spooled and autonomously ingested by the AI.
 * Then navigate to Workbench to get a complete overview of the email analysed.
 
-⚠️ IMPORTANT AI NOTICE: The local DistilBERT model downloaded during setup is a base/untrained NLP model. It requires fine-tuning on a curated dataset of benign promotional emails and actual phishing lures before production use to avoid false positives (e.g., flagging standard newsletters as threats). Datasets will be provided if and when available/possible.
+> **⚠️ AI MODEL NOTE & GITHUB SIZE LIMITS:** 
+> Due to GitHub's repository size limits, the pre-trained/fine-tuned weights for our local AI models (DistilBERT and Qwen) are not bundled directly in this repository. 
+> 
+> * **With AI Enabled:** The platform runs full semantic NLP threat narration and deep phishing classification.
+> * **Without AI (Fallback Mode):** If model weights are missing, the system gracefully defaults to its robust **deterministic engine**—relying entirely on header parsing, SPF/DKIM/DMARC authentication enforcement, MaxMind GeoIP telemetry, and rule-based regex heuristics to ensure uninterrupted forensic functionality.
 
-We are using a trained model but due to GitHub's size limits on uploads, we aren't able to upload that.
 ---
 # Fully Implemented (Production Baseline)
 * NLP Phishing & Urgency Detection: Local DistilBERT inference evaluating body text and subject lines.
