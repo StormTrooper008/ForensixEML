@@ -1,7 +1,7 @@
 # logic/ai_agent.py
 import json
+import os
 import torch
-# import streamlit as st
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from typing import Dict, Any
 
@@ -14,6 +14,10 @@ class LocalQwenExplainer:
         self._load_model()
 
     def _load_model(self) -> None:
+        if not os.path.exists(QWEN_MODEL_PATH):
+            print(f"[!] Qwen model weights not found at '{QWEN_MODEL_PATH}'. AI narrative generation disabled.")
+            return
+
         try:
             device_str = "cuda" if torch.cuda.is_available() else "cpu"
             print(f"Loading Qwen 1.5B on {device_str}...")
@@ -35,10 +39,14 @@ class LocalQwenExplainer:
             print(f"Warning: Could not load Qwen model: {e}")
 
     def generate_summary(self, telemetry_data: Dict[str, Any]) -> str:
+        # Professional fallback message if model weights are missing
         if self.model is None or self.tokenizer is None:
-            return "⚠️ Qwen unavailable. DistilBERT applied without narrative."
+            return (
+                "ℹ️ **AI Threat Briefing Unavailable:** Local generative model weights (Qwen 1.5B) "
+                "are not installed. Please verify the `models/Qwen2.5-1.5B-Instruct` directory "
+                "or run `python scripts/setup_models.py` to enable automated narrative analysis."
+            )
         
-        # SURGICAL EXTRACTION: Give Qwen exactly what it needs to write a smart summary without blowing up RAM
         safe_telemetry = {
             "distilbert_threat_confidence": f"{telemetry_data.get('local_ai', {}).get('phishing_probability', 0)}%",
             "email_message_preview": telemetry_data.get("decomp", {}).get("body_preview", "No text"),
@@ -57,7 +65,12 @@ Telemetry: {json.dumps(safe_telemetry)}<|im_end|>
         try:
             device_str = "cuda" if torch.cuda.is_available() else "cpu"
             inputs = self.tokenizer(prompt, return_tensors="pt").to(device_str)
-            outputs = self.model.generate(**inputs, max_new_tokens=150, temperature=0.3)
+            outputs = self.model.generate(
+                **inputs, 
+                max_new_tokens=150, 
+                temperature=0.3,
+                do_sample=True
+            )
             
             input_length = inputs.input_ids.shape[1]
             response_text = self.tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True)
@@ -65,8 +78,7 @@ Telemetry: {json.dumps(safe_telemetry)}<|im_end|>
         except Exception as e:
             return f"❌ Qwen Generation Error: {str(e)}"
 
-# --- CACHE THE MODEL SO STREAMLIT DOESN'T FREEZE ON RELOAD ---
-# --- REMOVE @st.cache_resource AND USE A GLOBAL SINGLETON INSTEAD ---
+# --- GLOBAL SINGLETON ---
 _qwen_instance = None
 
 def get_qwen():

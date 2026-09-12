@@ -47,7 +47,22 @@ signal.signal(signal.SIGINT, safe_shutdown)
 
 agent = get_qwen()
 
+FALLBACK_LURES = {
+    "an overdue invoice": "Please find attached the overdue invoice for services rendered last month. Remit payment within 24 hours to avoid legal escalation.",
+    "mandatory HR compliance": "All personnel are required to complete the updated employee compliance verification by end of day. Failure to do so will freeze internal access.",
+    "password expiry": "Your corporate account password will expire in 2 hours. Access the self-service directory portal immediately to maintain uninterrupted access."
+}
+
 def generate_ai_lure(topic: str) -> str:
+
+
+# If the model wasn't downloaded, use a deterministic synthetic lure instead of crashing
+    if agent.model is None or agent.tokenizer is None:
+        return FALLBACK_LURES.get(
+            topic, 
+            f"Urgent notification regarding {topic}. Please review the attached corporate documentation immediately."
+        )
+    
     prompt = f"<|im_start|>system\nYou are a red-team operator writing a realistic, 2-sentence phishing email body. Do not include subject lines or headers.<|im_end|>\n<|im_start|>user\nWrite a short, urgent email about: {topic}<|im_end|>\n<|im_start|>assistant\n"
     
     device = "cuda" if torch.cuda.is_available() else "cpu"
