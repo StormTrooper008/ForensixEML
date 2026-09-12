@@ -12,9 +12,15 @@ __pycache__/
 Thumbs.db
 
 # Local AI model weights & checkpoints
-models/
+# models/*
+models/distilbert-phishing/*
+models/Qwen2.5-1.5B-Instruct/*
+
 *.safetensors
 *.bin
+
+!models/distilbert-phishing/.gitkeep
+!models/Qwen2.5-1.5B-Instruct/.gitkeep
 
 # Ignore emails in spool and test directories
 inbox_spool/*
