@@ -2,7 +2,7 @@ Markdown
 # ForensixEML
 **⚠️ AI Notice**
 
-This is a vibe coded program but under human supervision. It was for a hackathon but could evolve into something new and improved. Something better
+This is a vibe coded program but under human supervision. It was for a hackathon (Smart India Hackathon 2026) but could evolve into something new and improved. Something better.
 
 ---
 
