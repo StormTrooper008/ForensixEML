@@ -1,5 +1,9 @@
 Markdown
 # ForensixEML
+**⚠️ AI Notice** 
+This is a vibe coded program but under human supervision. It was for a hackathon but could evolve into something new and improved. Something better
+
+---
 
 ForensixEML is an advanced, offline-first email forensic analysis and threat detection platform. It combines deterministic heuristics with local, air-gapped AI models (DistilBERT and Qwen 1.5B) to provide enterprise-grade email triage, IOC extraction, and automated DFIR reporting.
 
